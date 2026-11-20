@@ -1,0 +1,813 @@
+{
+  "schema_version": 1,
+  "ticket_id": "656ea713-cb71-47ba-8636-9c52fefcc21d",
+  "revision": 47,
+  "title": "rpi_ctrl_v2.sh: channel readback overwritten, indigo3 versions installed as indigo, open networks rejected",
+  "description": "Small fixes in tools/rpi_ctrl_v2.sh (VERSION 2.01), item A of upstream issue #787. The password-length guards are handled by the related ticket ea48a942.\n\n1. __read-wifi-channel tests WIFI_AP_CH instead of the local wifi_ch it just read, so WIFI_AP_CH (default 6) is always overwritten with the read value, which is empty when no indigo-wifi profile is active (for example a Raspberry Pi Imager install connected through netplan-wlan0-<SSID>). --get-wifi-channel then alerts \"'channel' not found\" in client mode instead of exiting quietly, and --set-wifi-server falls back to auto channel selection. Expected: keep the current value when the read is empty.\n2. __install-version always runs apt-get install indigo=<version>, but __list-available-versions also lists indigo3 versions, which then fail to install. Expected: install the package (indigo or indigo3) that owns the version, e.g. by checking apt-cache show indigo3=<version>.\n3. __set-wifi-client rejects an empty password (WIFI_CN_PW not set), so open networks cannot be joined although indigo_server passes '' for an empty password. Expected: an empty password joins an open network (nmcli dev wifi connect <ssid> without password); a non-empty password keeps the 8..63 length check.\n4. The argument parser prints 'unknown argument ${2}' instead of the unknown argument ${1}.\n\nNo change to the CLI or to the OK / ALERT output format. Tests: a hardware-free test that runs the script with stub nmcli, apt-get, apt-cache, iw, raspi-config on PATH and checks the commands issued and the output for each case. Observed on Raspberry Pi OS trixie with indigo3 3.0-11.",
+  "type": "bug",
+  "discovered_at": null,
+  "created_at": "2026-11-20T13:06:59.748746Z",
+  "status": "closed",
+  "branch": "ticket/656ea713-cb71-47ba-8636-9c52fefcc21d",
+  "related_ticket_id": "ea48a942-7a0f-5a3f-b96d-41c06fd4ef0d",
+  "config_overrides": {},
+  "tasks": [
+    {
+      "task_id": "31613a20-a1f2-4274-b2fc-d756ca3ddb9f",
+      "title": "Implement",
+      "type": "implementation",
+      "status": "succeeded",
+      "depends_on": [],
+      "attempts": [
+        {
+          "attempt_id": "03a6453b-643c-49f0-bcac-e36584e7032c",
+          "number": 1,
+          "execution_mode": "manual",
+          "worker": {
+            "provider": "anthropic",
+            "model": "claude-opus-5-5",
+            "reasoning": "high"
+          },
+          "status": "succeeded",
+          "started_at": "2026-11-20T13:21:33.526131Z",
+          "last_activity_at": "2026-11-20T13:26:49.044694Z",
+          "ended_at": "2026-11-20T13:26:49.044694Z",
+          "outcome": {
+            "summary": "Handed to review",
+            "recorded_by": "human/Francesco Pham",
+            "source": "human_report"
+          },
+          "duration_ms": 315518.563,
+          "tokens": null
+        }
+      ],
+      "history": [
+        {
+          "at": "2026-11-20T13:21:33.526131Z",
+          "status": "running",
+          "actor": "human/Francesco Pham",
+          "reason": "Ticket branch ticket/656ea713-cb71-47ba-8636-9c52fefcc21d"
+        },
+        {
+          "at": "2026-11-20T13:26:49.044694Z",
+          "status": "succeeded",
+          "actor": "human/Francesco Pham",
+          "reason": "Handed to review"
+        }
+      ],
+      "result": null,
+      "paths": [],
+      "difficulty": "low",
+      "metrics": {
+        "duration_ms": 315518.563,
+        "duration_basis": "sum_of_completed_attempt_wall_times",
+        "running_attempts": 0,
+        "unknown_duration_attempts": 0,
+        "tokens": {
+          "input": null,
+          "known_input": null,
+          "output": null,
+          "known_output": null,
+          "total": null,
+          "known_total": null,
+          "complete": false,
+          "measured_attempts": 0,
+          "total_attempts": 1
+        }
+      }
+    },
+    {
+      "task_id": "0de95fd5-b32a-4b79-8a48-5583fedc7f4f",
+      "title": "Review",
+      "type": "review",
+      "status": "succeeded",
+      "depends_on": [],
+      "attempts": [
+        {
+          "attempt_id": "460f9a6f-b478-4e73-b37d-e583e2b25b43",
+          "number": 1,
+          "execution_mode": "manual",
+          "worker": {
+            "provider": "anthropic",
+            "model": "claude-opus-5-5",
+            "reasoning": "high"
+          },
+          "status": "succeeded",
+          "started_at": "2026-11-20T13:26:49.044728Z",
+          "last_activity_at": "2026-11-20T13:29:11.639669Z",
+          "ended_at": "2026-11-20T13:29:11.639669Z",
+          "outcome": {
+            "summary": "Pass. Diff vs ticket/ea48a942 reviewed (tools/rpi_ctrl_v2.sh, test_rpi_ctrl_v2.py, Makefile, AGENTS.md, pbxproj). (1) rpi_ctrl_v2.sh:317 assigns the read channel only when non-empty; client mode without indigo-wifi now exits 1 quietly, active AP readback unchanged. (2) :553-555 output-based apt-cache show indigo3=<ver> check is right: host apt 2.8.4 prints nothing and exits 0 for a missing version (exits 100 only for an unknown package), stderr discarded, so the check is robust to either. (3) :449-462 guards run only for non-empty passwords and still __ALERT before any nmcli call; indigo_server's '' reaches the parser as an empty $2; open connect is quoted; failed open connect keeps the AP fallback. (4) :667 prints ${1}. Tests: make test-rpi-ctrl-v2 8/8 OK and test-rpi-ctrl-wifi-client 3/3 OK on this tree; read against the parent script each of the four defect tests fails (ALERT 'channel' not found, indigo=3.0-11 argv, WIFI_CN_PW not set, empty ${2}). Safety: PATH is stubs + grep/head/tr/which only, CONF_SYSCTL/PROC_FORWARD redirected and /etc|/proc absence asserted, /sys carrier read goes through the cat stub and is unreachable in these cases. Portability: PCRE case skips without grep -P; the other cases do not depend on GNU tools; /bin/bash 3.2 compatible. Xcode ID unique, git diff --check clean. Out of scope, for the owner (not required here): after a successful open join, update_wifi_setings (indigo_server.c:1543) runs --get-wifi-client and --get-wifi-server, which __ALERT \"'psk' not found\" (rpi_ctrl_v2.sh:477, :375) because an open profile has no psk [verify on hardware], so SERVER_WIFI_INFRASTRUCTURE (and AP) end in ALERT with a blank SSID although the join succeeded. Fixing it changes the get-commands' ALERT behaviour, which this ticket excluded; suggest a follow-up ticket.",
+            "recorded_by": "human/Francesco Pham",
+            "source": "human_report"
+          },
+          "duration_ms": 142594.941,
+          "tokens": null
+        },
+        {
+          "attempt_id": "a16aca75-6907-419e-aafe-889c2714540e",
+          "number": 2,
+          "execution_mode": "manual",
+          "worker": {
+            "provider": "anthropic",
+            "model": "claude-opus-5-5",
+            "reasoning": "high"
+          },
+          "status": "succeeded",
+          "started_at": "2026-11-20T13:31:52.379170Z",
+          "last_activity_at": "2026-11-20T13:32:31.677432Z",
+          "ended_at": "2026-11-20T13:32:31.677432Z",
+          "outcome": {
+            "summary": "Round 2 pass at tree 0cdad9c3 (commit 51b2c3b94). Delta: rpi_ctrl_v2.sh:376 (__get-wifi-server) and :491 (__get-wifi-client) alert \"'psk' not found\" only when psk is empty and the active profile has 802-11-wireless-security.key-mgmt; [[ && ]] short-circuits, so the extra nmcli call happens only when psk is empty; the lookbehind key regex cannot match another key. indigo_server consumption (indigo_server.c:986-1031, called after --set-wifi-client at :1543, non-verbose): open client profile -> --get-wifi-client prints the SSID, so SERVER_WIFI_INFRASTRUCTURE is OK with the SSID and a cleared password; --get-wifi-server in client mode exits 1 with no output, so execute_query returns NULL and SERVER_WIFI_AP goes IDLE, as for a secured client; the attach-time 30 s retry (:1172) no longer fires for open networks. Verbose 'SSID<TAB>' gives an SSID token and no password token. Secured profiles without psk (wpa-psk, and wpa-eap/WEP/OWE, which also have key-mgmt) still alert as before. Tests: test_get_wifi_settings_of_open_network fails on the round-1 script (all four subtests print the ALERT) and passes now; the secured-without-psk test guards against over-relaxing; require_pcre is a straight extraction. make test-rpi-ctrl-v2 10/10 OK, 0 skipped; make test-rpi-ctrl-wifi-client 3/3 OK; git diff --check clean; AGENTS.md entry accurate. Coverage limit: open-profile nmcli output verified on a laptop NetworkManager, not on the Pi's [verify].",
+            "recorded_by": "human/Francesco Pham",
+            "source": "human_report"
+          },
+          "duration_ms": 39298.262,
+          "tokens": null
+        }
+      ],
+      "history": [
+        {
+          "at": "2026-11-20T13:26:49.044728Z",
+          "status": "running",
+          "actor": "human/Francesco Pham",
+          "reason": "Review started"
+        },
+        {
+          "at": "2026-11-20T13:29:11.639669Z",
+          "status": "succeeded",
+          "actor": "human/Francesco Pham",
+          "reason": "Pass. Diff vs ticket/ea48a942 reviewed (tools/rpi_ctrl_v2.sh, test_rpi_ctrl_v2.py, Makefile, AGENTS.md, pbxproj). (1) rpi_ctrl_v2.sh:317 assigns the read channel only when non-empty; client mode without indigo-wifi now exits 1 quietly, active AP readback unchanged. (2) :553-555 output-based apt-cache show indigo3=<ver> check is right: host apt 2.8.4 prints nothing and exits 0 for a missing version (exits 100 only for an unknown package), stderr discarded, so the check is robust to either. (3) :449-462 guards run only for non-empty passwords and still __ALERT before any nmcli call; indigo_server's '' reaches the parser as an empty $2; open connect is quoted; failed open connect keeps the AP fallback. (4) :667 prints ${1}. Tests: make test-rpi-ctrl-v2 8/8 OK and test-rpi-ctrl-wifi-client 3/3 OK on this tree; read against the parent script each of the four defect tests fails (ALERT 'channel' not found, indigo=3.0-11 argv, WIFI_CN_PW not set, empty ${2}). Safety: PATH is stubs + grep/head/tr/which only, CONF_SYSCTL/PROC_FORWARD redirected and /etc|/proc absence asserted, /sys carrier read goes through the cat stub and is unreachable in these cases. Portability: PCRE case skips without grep -P; the other cases do not depend on GNU tools; /bin/bash 3.2 compatible. Xcode ID unique, git diff --check clean. Out of scope, for the owner (not required here): after a successful open join, update_wifi_setings (indigo_server.c:1543) runs --get-wifi-client and --get-wifi-server, which __ALERT \"'psk' not found\" (rpi_ctrl_v2.sh:477, :375) because an open profile has no psk [verify on hardware], so SERVER_WIFI_INFRASTRUCTURE (and AP) end in ALERT with a blank SSID although the join succeeded. Fixing it changes the get-commands' ALERT behaviour, which this ticket excluded; suggest a follow-up ticket."
+        },
+        {
+          "at": "2026-11-20T13:31:52.379170Z",
+          "status": "running",
+          "actor": "human/Francesco Pham",
+          "reason": "Review started"
+        },
+        {
+          "at": "2026-11-20T13:32:31.677432Z",
+          "status": "succeeded",
+          "actor": "human/Francesco Pham",
+          "reason": "Round 2 pass at tree 0cdad9c3 (commit 51b2c3b94). Delta: rpi_ctrl_v2.sh:376 (__get-wifi-server) and :491 (__get-wifi-client) alert \"'psk' not found\" only when psk is empty and the active profile has 802-11-wireless-security.key-mgmt; [[ && ]] short-circuits, so the extra nmcli call happens only when psk is empty; the lookbehind key regex cannot match another key. indigo_server consumption (indigo_server.c:986-1031, called after --set-wifi-client at :1543, non-verbose): open client profile -> --get-wifi-client prints the SSID, so SERVER_WIFI_INFRASTRUCTURE is OK with the SSID and a cleared password; --get-wifi-server in client mode exits 1 with no output, so execute_query returns NULL and SERVER_WIFI_AP goes IDLE, as for a secured client; the attach-time 30 s retry (:1172) no longer fires for open networks. Verbose 'SSID<TAB>' gives an SSID token and no password token. Secured profiles without psk (wpa-psk, and wpa-eap/WEP/OWE, which also have key-mgmt) still alert as before. Tests: test_get_wifi_settings_of_open_network fails on the round-1 script (all four subtests print the ALERT) and passes now; the secured-without-psk test guards against over-relaxing; require_pcre is a straight extraction. make test-rpi-ctrl-v2 10/10 OK, 0 skipped; make test-rpi-ctrl-wifi-client 3/3 OK; git diff --check clean; AGENTS.md entry accurate. Coverage limit: open-profile nmcli output verified on a laptop NetworkManager, not on the Pi's [verify]."
+        }
+      ],
+      "result": {
+        "summary": "Round 2 pass at tree 0cdad9c3 (commit 51b2c3b94). Delta: rpi_ctrl_v2.sh:376 (__get-wifi-server) and :491 (__get-wifi-client) alert \"'psk' not found\" only when psk is empty and the active profile has 802-11-wireless-security.key-mgmt; [[ && ]] short-circuits, so the extra nmcli call happens only when psk is empty; the lookbehind key regex cannot match another key. indigo_server consumption (indigo_server.c:986-1031, called after --set-wifi-client at :1543, non-verbose): open client profile -> --get-wifi-client prints the SSID, so SERVER_WIFI_INFRASTRUCTURE is OK with the SSID and a cleared password; --get-wifi-server in client mode exits 1 with no output, so execute_query returns NULL and SERVER_WIFI_AP goes IDLE, as for a secured client; the attach-time 30 s retry (:1172) no longer fires for open networks. Verbose 'SSID<TAB>' gives an SSID token and no password token. Secured profiles without psk (wpa-psk, and wpa-eap/WEP/OWE, which also have key-mgmt) still alert as before. Tests: test_get_wifi_settings_of_open_network fails on the round-1 script (all four subtests print the ALERT) and passes now; the secured-without-psk test guards against over-relaxing; require_pcre is a straight extraction. make test-rpi-ctrl-v2 10/10 OK, 0 skipped; make test-rpi-ctrl-wifi-client 3/3 OK; git diff --check clean; AGENTS.md entry accurate. Coverage limit: open-profile nmcli output verified on a laptop NetworkManager, not on the Pi's [verify].",
+        "source": "review",
+        "recorded_by": "human/Francesco Pham"
+      },
+      "paths": [],
+      "difficulty": "low",
+      "metrics": {
+        "duration_ms": 181893.203,
+        "duration_basis": "sum_of_completed_attempt_wall_times",
+        "running_attempts": 0,
+        "unknown_duration_attempts": 0,
+        "tokens": {
+          "input": null,
+          "known_input": null,
+          "output": null,
+          "known_output": null,
+          "total": null,
+          "known_total": null,
+          "complete": false,
+          "measured_attempts": 0,
+          "total_attempts": 2
+        }
+      }
+    }
+  ],
+  "history": [
+    {
+      "event_id": "066f1814-3d5d-45cc-8ad1-5d607737a02c",
+      "event": "ticket/created",
+      "at": "2026-11-20T13:06:59.749301Z",
+      "actor": "human/Francesco Pham",
+      "priority": "medium",
+      "severity": "medium",
+      "profile": "simple"
+    },
+    {
+      "event_id": "4ce49b09-7f31-442b-97e3-67bde2d53f5f",
+      "event": "ticket/confirmed",
+      "at": "2026-11-20T13:10:22.813638Z",
+      "actor": "human/Francesco Pham",
+      "priority": "medium",
+      "severity": "medium",
+      "profile": "simple",
+      "corrected": null
+    },
+    {
+      "event_id": "c1e1ddbb-d393-4636-bb68-33e77917f998",
+      "event": "task/progress",
+      "at": "2026-11-20T13:21:33.526232Z",
+      "actor": "human/Francesco Pham",
+      "task_id": "31613a20-a1f2-4274-b2fc-d756ca3ddb9f",
+      "text": "Implementation started on branch ticket/656ea713-cb71-47ba-8636-9c52fefcc21d"
+    },
+    {
+      "event_id": "11d4ece0-c471-42f7-bfbb-a6a8c23510fb",
+      "event": "ticket/started",
+      "at": "2026-11-20T13:21:33.526783Z",
+      "actor": "human/Francesco Pham",
+      "branch": "ticket/656ea713-cb71-47ba-8636-9c52fefcc21d",
+      "base": "ticket/ea48a942-7a0f-5a3f-b96d-41c06fd4ef0d"
+    },
+    {
+      "event_id": "799d11c6-0174-4e40-8f76-30b369c95b0b",
+      "event": "task/progress",
+      "at": "2026-11-20T13:21:59.411002Z",
+      "actor": "human/Francesco Pham",
+      "task_id": "31613a20-a1f2-4274-b2fc-d756ca3ddb9f",
+      "text": "Reading AGENTS.md and rpi_ctrl_v2.sh",
+      "attempt_id": "03a6453b-643c-49f0-bcac-e36584e7032c",
+      "worker": {
+        "provider": "anthropic",
+        "model": "claude-opus-5-5",
+        "reasoning": "high"
+      }
+    },
+    {
+      "event_id": "1bc4b680-b294-49a2-bfb7-72c2017daf3a",
+      "event": "task/progress",
+      "at": "2026-11-20T13:23:44.315785Z",
+      "actor": "human/Francesco Pham",
+      "task_id": "31613a20-a1f2-4274-b2fc-d756ca3ddb9f",
+      "text": "Writing indigo_test/unit/test_rpi_ctrl_v2.py to reproduce the four defects"
+    },
+    {
+      "event_id": "57770b05-a131-4bbd-9969-f6e3dd89548a",
+      "event": "task/progress",
+      "at": "2026-11-20T13:24:35.419190Z",
+      "actor": "human/Francesco Pham",
+      "task_id": "31613a20-a1f2-4274-b2fc-d756ca3ddb9f",
+      "text": "Running test_rpi_ctrl_v2.py on the unfixed script (reproduction)"
+    },
+    {
+      "event_id": "f12ed778-8b15-4999-9c2b-c342d58df8a3",
+      "event": "ticket/note",
+      "at": "2026-11-20T13:24:46.054262Z",
+      "actor": "human/Francesco Pham",
+      "text": "Reproduction (before fix) with indigo_test/unit/test_rpi_ctrl_v2.py on the unmodified tools/rpi_ctrl_v2.sh (stub-only PATH, CONF_SYSCTL/PROC_FORWARD redirected): 8 tests, 4 failures, one per defect. (1) --get-wifi-channel, no indigo-wifi profile active (nmcli exits 10, no output): stdout \"ALERT: 'channel' not found\" instead of a quiet exit 1. (2) --install-version 3.0-11 with apt-cache show indigo3=3.0-11 returning a record: apt-get argv was 'install -y --allow-downgrades indigo=3.0-11', expected indigo3=3.0-11. (3) --set-wifi-client fixture-net '': stdout 'ALERT: WIFI_CN_PW not set', expected OK and 'nmcli dev wifi connect fixture-net' with no password. (4) --bogus-option: printed 'unknown argument ' (empty ${2}). Passing before the fix: active AP channel readback (11), indigo (2.x) version install, 1/7/64-char password rejection without commands (the __ALERT guards from ea48a942 are already on this branch's base), 8/63-char join. Host check: apt 2.8.4 'apt-cache show bash=<missing version>' prints nothing and exits 0 (only an unknown package exits 100), so the indigo3 test must use the output, not the exit status.",
+      "tokens": null
+    },
+    {
+      "event_id": "3a4b8fcd-7159-4f92-bc3e-67e6ea153d53",
+      "event": "task/progress",
+      "at": "2026-11-20T13:24:46.192790Z",
+      "actor": "human/Francesco Pham",
+      "task_id": "31613a20-a1f2-4274-b2fc-d756ca3ddb9f",
+      "text": "Fixing the four defects in tools/rpi_ctrl_v2.sh"
+    },
+    {
+      "event_id": "543b0c03-bd27-4ead-8497-0528d970343a",
+      "event": "task/progress",
+      "at": "2026-11-20T13:25:33.317754Z",
+      "actor": "human/Francesco Pham",
+      "task_id": "31613a20-a1f2-4274-b2fc-d756ca3ddb9f",
+      "text": "Running test-rpi-ctrl-v2 and test-rpi-ctrl-wifi-client after the fix"
+    },
+    {
+      "event_id": "fa65f0e7-65f2-47fa-8745-290e0ec5300f",
+      "event": "task/progress",
+      "at": "2026-11-20T13:25:54.639364Z",
+      "actor": "human/Francesco Pham",
+      "task_id": "31613a20-a1f2-4274-b2fc-d756ca3ddb9f",
+      "text": "Check command-1 started: make -C indigo_test test-rpi-ctrl-v2"
+    },
+    {
+      "event_id": "49f24f60-73fc-4cd6-8d40-d16a55e417d1",
+      "event": "task/progress",
+      "at": "2026-11-20T13:25:55.064946Z",
+      "actor": "human/Francesco Pham",
+      "task_id": "31613a20-a1f2-4274-b2fc-d756ca3ddb9f",
+      "text": "Check command-1 passed: 8 tests"
+    },
+    {
+      "event_id": "7a8827b7-298e-497e-b8c7-a3274ad7cc04",
+      "event": "check/passed",
+      "at": "2026-11-20T13:25:55.074574Z",
+      "actor": "human/Francesco Pham",
+      "commit": "b66848c1a697ca9ecb49bd1a176bce53d2c9fbf3",
+      "checks": "command-1 passed"
+    },
+    {
+      "event_id": "d98a82e5-3273-4215-b68a-baea93ee0433",
+      "event": "task/progress",
+      "at": "2026-11-20T13:26:00.158223Z",
+      "actor": "human/Francesco Pham",
+      "task_id": "31613a20-a1f2-4274-b2fc-d756ca3ddb9f",
+      "text": "Check whitespace started"
+    },
+    {
+      "event_id": "f848eea2-c969-4a41-ba1b-3cbcc75cd034",
+      "event": "task/progress",
+      "at": "2026-11-20T13:26:00.201748Z",
+      "actor": "human/Francesco Pham",
+      "task_id": "31613a20-a1f2-4274-b2fc-d756ca3ddb9f",
+      "text": "Check whitespace passed"
+    },
+    {
+      "event_id": "f8541275-c66c-45b9-9c4e-9a3a25121897",
+      "event": "check/passed",
+      "at": "2026-11-20T13:26:00.210882Z",
+      "actor": "human/Francesco Pham",
+      "commit": "b66848c1a697ca9ecb49bd1a176bce53d2c9fbf3",
+      "checks": "whitespace passed"
+    },
+    {
+      "event_id": "624f4690-c93a-46f4-bd11-b3810fffd97a",
+      "event": "ticket/note",
+      "at": "2026-11-20T13:26:11.943894Z",
+      "actor": "human/Francesco Pham",
+      "text": "After fix: test_rpi_ctrl_v2.py 8/8 pass, none skipped (flow check --command 'make -C indigo_test test-rpi-ctrl-v2' passed; whitespace passed). test_rpi_ctrl_wifi_client.py from ea48a942 also still passes 3/3. Changes in tools/rpi_ctrl_v2.sh: (1) __read-wifi-channel assigns the read wifi_ch only when it is non-empty, otherwise WIFI_AP_CH keeps its value (default 6); (2) __install-version installs indigo3=<ver> when 'apt-cache show indigo3=<ver>' prints a record, otherwise indigo=<ver>. It checks the output rather than the exit status because apt 2.8 exits 0 with no output for a missing version. Behaviour of trixie's apt 3.x not checked [verify]; the output check works either way. (3) __set-wifi-client: an empty password runs 'nmcli dev wifi connect <ssid>' without password; the 8..63 length guards apply only to a non-empty password. (4) the parser prints 'unknown argument ${1}'. Coordination with ea48a942: this ticket's branch is based on ea48a942's branch (HEAD includes its two wip commits), so the __ALERT length guards are already in the base. Fix (3) moves both guards into the non-empty branch and keeps __ALERT, so a 1..7 or >63-char password still alerts before any nmcli call (tested with 1, 7 and 64 chars, no command issued). Open-network failure keeps the existing fallback: checked by hand with a failing connect stub, the script prints 'ALERT: failed to connect ... WiFi set to default AP' and rebuilds the indigosky AP. Not changed: VERSION=2.01, tools/rpi_ctrl.sh. Limitations: unit check not run because libusb-1.0/avahi-client dev packages are missing on this host; the active-AP channel case skips on hosts whose grep lacks -P (e.g. macOS BSD grep); the script itself needs GNU grep -P. Makefile.inc (gitignored) was generated in the worktree with 'make Makefile.inc' because indigo_test/Makefile includes it.",
+      "tokens": null
+    },
+    {
+      "event_id": "0fb955d9-28f1-4ddc-a17a-07290326b69c",
+      "event": "task/progress",
+      "at": "2026-11-20T13:26:49.044785Z",
+      "actor": "human/Francesco Pham",
+      "task_id": "0de95fd5-b32a-4b79-8a48-5583fedc7f4f",
+      "text": "Review started"
+    },
+    {
+      "event_id": "b80d0b35-3392-40c8-8586-fad0052dad4d",
+      "event": "review/started",
+      "at": "2026-11-20T13:26:49.045313Z",
+      "actor": "human/Francesco Pham",
+      "kind": "code"
+    },
+    {
+      "event_id": "e841608e-661c-4866-bf21-5af0cd676969",
+      "event": "task/progress",
+      "at": "2026-11-20T13:26:55.258107Z",
+      "actor": "human/Francesco Pham",
+      "task_id": "0de95fd5-b32a-4b79-8a48-5583fedc7f4f",
+      "text": "Reviewing rpi_ctrl_v2.sh diff vs parent branch",
+      "attempt_id": "460f9a6f-b478-4e73-b37d-e583e2b25b43",
+      "worker": {
+        "provider": "anthropic",
+        "model": "claude-opus-5-5",
+        "reasoning": "high"
+      }
+    },
+    {
+      "event_id": "8429ed42-eb9c-4d7a-8c61-3ef5f84c4be7",
+      "event": "task/progress",
+      "at": "2026-11-20T13:28:20.772412Z",
+      "actor": "human/Francesco Pham",
+      "task_id": "0de95fd5-b32a-4b79-8a48-5583fedc7f4f",
+      "text": "Checking host apt-cache show output for missing versions/packages"
+    },
+    {
+      "event_id": "28d924f4-a846-4a81-b210-df7395120f9c",
+      "event": "task/progress",
+      "at": "2026-11-20T13:28:26.479971Z",
+      "actor": "human/Francesco Pham",
+      "task_id": "0de95fd5-b32a-4b79-8a48-5583fedc7f4f",
+      "text": "Running test-rpi-ctrl-v2 and test-rpi-ctrl-wifi-client"
+    },
+    {
+      "event_id": "6ce1a163-6ddf-4532-aec7-ea3fd3ef0eed",
+      "event": "task/progress",
+      "at": "2026-11-20T13:29:11.639755Z",
+      "actor": "human/Francesco Pham",
+      "task_id": "0de95fd5-b32a-4b79-8a48-5583fedc7f4f",
+      "text": "Review finished: passed"
+    },
+    {
+      "event_id": "809159dd-c7dc-483b-ac80-d0e8d39731b1",
+      "event": "review/passed",
+      "at": "2026-11-20T13:29:11.640495Z",
+      "actor": "human/Francesco Pham",
+      "task_id": "0de95fd5-b32a-4b79-8a48-5583fedc7f4f",
+      "kind": "code",
+      "verdict": "pass",
+      "commit": "b66848c1a697ca9ecb49bd1a176bce53d2c9fbf3"
+    },
+    {
+      "event_id": "95edc036-02e5-49ba-b008-d38cc0cf9ad7",
+      "event": "ticket/note",
+      "at": "2026-11-20T13:29:42.810734Z",
+      "actor": "human/Francesco Pham",
+      "text": "Coordinator addition after review round 1 (pass): open-network support must also read back cleanly. After an open join, indigo_server re-reads (indigo_server.c ~1543); --get-wifi-client (rpi_ctrl_v2.sh ~477) and --get-wifi-server (~375) alert 'psk' not found because an open profile has no psk, so the properties go to ALERT although the join worked. Fix in this ticket: treat a missing psk as an open network when the profile has no 802-11-wireless-security.key-mgmt (empty password, no alert); keep alerting for a secured profile without psk. Output format unchanged otherwise.",
+      "tokens": null
+    },
+    {
+      "event_id": "9c1dff2f-300a-4941-8242-34e58c4dc124",
+      "event": "task/progress",
+      "at": "2026-11-20T13:29:57.035766Z",
+      "actor": "human/Francesco Pham",
+      "task_id": null,
+      "text": "Coordinator addition: open-profile psk readback in --get-wifi-client/--get-wifi-server"
+    },
+    {
+      "event_id": "a8954dbf-9b94-452a-a020-4b30afac4c31",
+      "event": "ticket/note",
+      "at": "2026-11-20T13:30:39.355107Z",
+      "actor": "human/Francesco Pham",
+      "text": "Coordinator addition (open-profile settings readback), reproduction before the fix: added test_get_wifi_settings_of_open_network and test_get_wifi_settings_of_secured_network_without_psk to test_rpi_ctrl_v2.py (stub nmcli -s con show: active indigo-wifi client profile with ssid/mode only, and one with key-mgmt wpa-psk but no psk). On the unfixed script --get-wifi-client, --verbose --get-wifi-client, --get-wifi-server and --verbose --get-wifi-server all printed \"ALERT: 'psk' not found\" for the open profile (4 subtest failures). indigo_server update_wifi_setings (indigo_server.c ~986-1030) reads only the first line via execute_query: an 'ALERT:' prefix sets SERVER_WIFI_AP / SERVER_WIFI_INFRASTRUCTURE to ALERT and clears the SSID, so after an open join the infrastructure property showed ALERT with a blank SSID. The secured-without-psk case already alerted, as expected.",
+      "tokens": null
+    },
+    {
+      "event_id": "47c80940-91f3-4e43-8d48-fa6a7699290d",
+      "event": "task/progress",
+      "at": "2026-11-20T13:31:01.777805Z",
+      "actor": "human/Francesco Pham",
+      "task_id": null,
+      "text": "Running flow checks after the open-profile readback fix"
+    },
+    {
+      "event_id": "9ba8db48-1318-45a3-8a75-79698a6eb77e",
+      "event": "task/progress",
+      "at": "2026-11-20T13:31:01.973698Z",
+      "actor": "human/Francesco Pham",
+      "task_id": null,
+      "text": "Check command-1 started: make -C indigo_test test-rpi-ctrl-v2"
+    },
+    {
+      "event_id": "69937f3d-834e-45f5-8e3c-08e64e8a3635",
+      "event": "task/progress",
+      "at": "2026-11-20T13:31:02.649910Z",
+      "actor": "human/Francesco Pham",
+      "task_id": null,
+      "text": "Check command-1 passed: 10 tests"
+    },
+    {
+      "event_id": "8ae081ec-9107-4c66-bdfa-f1adfd75cfc5",
+      "event": "check/passed",
+      "at": "2026-11-20T13:31:02.660723Z",
+      "actor": "human/Francesco Pham",
+      "commit": "51b2c3b9444afdf16fd1179cd6b86ef1e148880d",
+      "checks": "command-1 passed"
+    },
+    {
+      "event_id": "d4ebdba9-61fd-4fbb-a107-40669302f827",
+      "event": "task/progress",
+      "at": "2026-11-20T13:31:02.819041Z",
+      "actor": "human/Francesco Pham",
+      "task_id": null,
+      "text": "Check command-1 started: make -C indigo_test test-rpi-ctrl-wifi-client"
+    },
+    {
+      "event_id": "c5f055fa-4b9a-4555-8e43-b925f9575d4d",
+      "event": "task/progress",
+      "at": "2026-11-20T13:31:03.144674Z",
+      "actor": "human/Francesco Pham",
+      "task_id": null,
+      "text": "Check command-1 passed: 3 tests"
+    },
+    {
+      "event_id": "779e70e9-9847-420a-8154-b4e8c707d190",
+      "event": "check/passed",
+      "at": "2026-11-20T13:31:03.156509Z",
+      "actor": "human/Francesco Pham",
+      "commit": "51b2c3b9444afdf16fd1179cd6b86ef1e148880d",
+      "checks": "command-1 passed"
+    },
+    {
+      "event_id": "bdfbdaa5-a67a-4335-9889-1206169777eb",
+      "event": "task/progress",
+      "at": "2026-11-20T13:31:03.315931Z",
+      "actor": "human/Francesco Pham",
+      "task_id": null,
+      "text": "Check whitespace started"
+    },
+    {
+      "event_id": "8e03fab6-d950-4c45-bf20-91429551c3ba",
+      "event": "task/progress",
+      "at": "2026-11-20T13:31:03.362168Z",
+      "actor": "human/Francesco Pham",
+      "task_id": null,
+      "text": "Check whitespace passed"
+    },
+    {
+      "event_id": "32be554d-37a3-44e1-b3ae-7ae8b276ac1d",
+      "event": "check/passed",
+      "at": "2026-11-20T13:31:03.372249Z",
+      "actor": "human/Francesco Pham",
+      "commit": "51b2c3b9444afdf16fd1179cd6b86ef1e148880d",
+      "checks": "whitespace passed"
+    },
+    {
+      "event_id": "13fcb3dc-ab39-456c-9602-21f9ca1daa49",
+      "event": "ticket/note",
+      "at": "2026-11-20T13:31:14.370167Z",
+      "actor": "human/Francesco Pham",
+      "text": "Coordinator addition, after the fix: --get-wifi-client and --get-wifi-server now alert \"'psk' not found\" only when the psk is empty AND the active profile has 802-11-wireless-security.key-mgmt. With no key-mgmt (open network) the password is empty. Open client profile: --get-wifi-client prints 'open-net' (exit 0), so indigo_server sets SERVER_WIFI_INFRASTRUCTURE OK with the SSID. --verbose prints 'open-net<TAB>' for both commands; strtok_r gives the SSID and no password token, so the password is cleared. --get-wifi-server in client mode exits 1 with no output, so execute_query returns NULL and SERVER_WIFI_AP goes IDLE, the same as for a secured client profile. A secured profile without psk still alerts for both commands. flow check on tree 0cdad9c3: test-rpi-ctrl-v2 10/10 passed, 0 skipped; test-rpi-ctrl-wifi-client 3/3 passed; whitespace passed. Unverified on real NetworkManager: that 'nmcli -s con show' prints no 802-11-wireless-security lines for an open profile [verify]. If it printed 'key-mgmt: --' the open case would still alert. indigo_test/AGENTS.md entry updated.",
+      "tokens": null
+    },
+    {
+      "event_id": "989098e2-b542-4243-9e74-889e03362c9f",
+      "event": "ticket/note",
+      "at": "2026-11-20T13:31:45.144877Z",
+      "actor": "human/Francesco Pham",
+      "text": "Verified on real NetworkManager (Ubuntu laptop, read-only): for two saved open Wi-Fi profiles, 'nmcli con show <name>' prints no 802-11-wireless-security lines at all and 'nmcli -g 802-11-wireless-security.key-mgmt' is empty, matching the open-network stub used in test_rpi_ctrl_v2.py. Not yet checked on the Pi's NetworkManager version.",
+      "tokens": null
+    },
+    {
+      "event_id": "94cfcf65-e0b0-4b43-8db7-3806ee1f1d3d",
+      "event": "task/progress",
+      "at": "2026-11-20T13:31:52.379253Z",
+      "actor": "human/Francesco Pham",
+      "task_id": "0de95fd5-b32a-4b79-8a48-5583fedc7f4f",
+      "text": "Review started"
+    },
+    {
+      "event_id": "8d53f1e3-c892-40ce-a73c-0dfaba823d30",
+      "event": "review/started",
+      "at": "2026-11-20T13:31:52.379933Z",
+      "actor": "human/Francesco Pham",
+      "kind": "code"
+    },
+    {
+      "event_id": "297823fb-aae1-4a52-9d0e-7ade614b0040",
+      "event": "task/progress",
+      "at": "2026-11-20T13:32:19.369844Z",
+      "actor": "human/Francesco Pham",
+      "task_id": "0de95fd5-b32a-4b79-8a48-5583fedc7f4f",
+      "text": "Round 2: running test-rpi-ctrl-v2 and test-rpi-ctrl-wifi-client"
+    },
+    {
+      "event_id": "b556b5da-421b-4626-a2a4-11a8f280a96d",
+      "event": "task/progress",
+      "at": "2026-11-20T13:32:31.530017Z",
+      "actor": "human/Francesco Pham",
+      "task_id": "0de95fd5-b32a-4b79-8a48-5583fedc7f4f",
+      "text": "Round 2 reviewer model",
+      "attempt_id": "a16aca75-6907-419e-aafe-889c2714540e",
+      "worker": {
+        "provider": "anthropic",
+        "model": "claude-opus-5-5",
+        "reasoning": "high"
+      }
+    },
+    {
+      "event_id": "7bd8fe06-8f2b-411b-8452-df1269f2972f",
+      "event": "task/progress",
+      "at": "2026-11-20T13:32:31.677505Z",
+      "actor": "human/Francesco Pham",
+      "task_id": "0de95fd5-b32a-4b79-8a48-5583fedc7f4f",
+      "text": "Review finished: passed"
+    },
+    {
+      "event_id": "3b12edde-8aee-4a58-941e-77617a453645",
+      "event": "review/passed",
+      "at": "2026-11-20T13:32:31.678206Z",
+      "actor": "human/Francesco Pham",
+      "task_id": "0de95fd5-b32a-4b79-8a48-5583fedc7f4f",
+      "kind": "code",
+      "verdict": "pass",
+      "commit": "51b2c3b9444afdf16fd1179cd6b86ef1e148880d"
+    },
+    {
+      "event_id": "1f1b5b08-88ae-4831-bf2a-4cc2ab1ee607",
+      "event": "task/progress",
+      "at": "2026-11-20T14:05:28.921735Z",
+      "actor": "human/Francesco Pham",
+      "task_id": null,
+      "text": "Check whitespace started"
+    },
+    {
+      "event_id": "42677e6d-e4c7-4535-ab28-3697e069c3fa",
+      "event": "task/progress",
+      "at": "2026-11-20T14:05:28.968504Z",
+      "actor": "human/Francesco Pham",
+      "task_id": null,
+      "text": "Check whitespace passed"
+    },
+    {
+      "event_id": "19c38343-b2af-4bd4-b1c7-544d1eb4a95c",
+      "event": "task/progress",
+      "at": "2026-11-20T14:05:28.979999Z",
+      "actor": "human/Francesco Pham",
+      "task_id": null,
+      "text": "Check unit started"
+    },
+    {
+      "event_id": "dd89e94e-4fc5-4273-8b4c-6505f7dd9c13",
+      "event": "task/progress",
+      "at": "2026-11-20T14:07:55.759041Z",
+      "actor": "human/Francesco Pham",
+      "task_id": null,
+      "text": "Check unit passed: 13 tests"
+    },
+    {
+      "event_id": "6d471b71-3654-4b99-8e30-e651d83ad613",
+      "event": "check/passed",
+      "at": "2026-11-20T14:07:55.774153Z",
+      "actor": "human/Francesco Pham",
+      "commit": "51b2c3b9444afdf16fd1179cd6b86ef1e148880d",
+      "checks": "whitespace passed, unit passed"
+    },
+    {
+      "event_id": "4a94b24e-5fb5-4ed4-853c-342329abfaca",
+      "event": "ticket/closed",
+      "at": "2026-11-20T14:08:29.121871Z",
+      "actor": "human/Francesco Pham",
+      "reason": "Checks and review passed.",
+      "resolution": "resolved"
+    }
+  ],
+  "closure": {
+    "actor": "human/Francesco Pham",
+    "at": "2026-11-20T14:08:29.121848Z",
+    "reason": "Checks and review passed.",
+    "resolution": "resolved",
+    "mode": "flow",
+    "verification": "checks_and_review",
+    "change_commit": "b68c90a1617c043bf313e486c5433c5146459938"
+  },
+  "priority": "medium",
+  "severity": "medium",
+  "difficulty": "low",
+  "flow": {
+    "profile": "simple",
+    "base": "ticket/ea48a942-7a0f-5a3f-b96d-41c06fd4ef0d",
+    "checks": [
+      {
+        "name": "command-1",
+        "command": "make -C indigo_test test-rpi-ctrl-v2",
+        "commit": "b66848c1a697ca9ecb49bd1a176bce53d2c9fbf3",
+        "tree": "96bce1d5cb51fc84c578ba18f846f7f641fbf29e",
+        "exit_code": 0,
+        "counts": {
+          "executed": 8,
+          "failed": 0,
+          "skipped": 0
+        },
+        "passed": true,
+        "at": "2026-11-20T13:25:55.064256Z",
+        "duration_s": 0.4,
+        "log": "/tmp/factory-flow/656ea713-cb71-47ba-8636-9c52fefcc21d/96bce1d5cb51-command-1.log"
+      },
+      {
+        "name": "whitespace",
+        "command": "git diff --check master...HEAD",
+        "commit": "b66848c1a697ca9ecb49bd1a176bce53d2c9fbf3",
+        "tree": "96bce1d5cb51fc84c578ba18f846f7f641fbf29e",
+        "exit_code": 0,
+        "counts": null,
+        "passed": true,
+        "at": "2026-11-20T13:26:00.201022Z",
+        "duration_s": 0.0,
+        "log": "/tmp/factory-flow/656ea713-cb71-47ba-8636-9c52fefcc21d/96bce1d5cb51-whitespace.log",
+        "selected": [
+          "whitespace",
+          "unit"
+        ]
+      },
+      {
+        "name": "command-1",
+        "command": "make -C indigo_test test-rpi-ctrl-wifi-client",
+        "commit": "51b2c3b9444afdf16fd1179cd6b86ef1e148880d",
+        "tree": "0cdad9c351e6489c6de8152f8c280530582080d1",
+        "exit_code": 0,
+        "counts": {
+          "executed": 3,
+          "failed": 0,
+          "skipped": 0
+        },
+        "passed": true,
+        "at": "2026-11-20T13:31:03.143740Z",
+        "duration_s": 0.3,
+        "log": "/tmp/factory-flow/656ea713-cb71-47ba-8636-9c52fefcc21d/0cdad9c351e6-command-1.log"
+      },
+      {
+        "name": "whitespace",
+        "command": "git diff --check master...HEAD",
+        "commit": "51b2c3b9444afdf16fd1179cd6b86ef1e148880d",
+        "tree": "0cdad9c351e6489c6de8152f8c280530582080d1",
+        "exit_code": 0,
+        "counts": null,
+        "passed": true,
+        "at": "2026-11-20T14:05:28.967495Z",
+        "duration_s": 0.0,
+        "log": "/tmp/factory-flow/656ea713-cb71-47ba-8636-9c52fefcc21d/0cdad9c351e6-whitespace.log",
+        "selected": [
+          "whitespace",
+          "unit"
+        ]
+      },
+      {
+        "name": "unit",
+        "command": "make Makefile.inc && make init && make -j8 -C indigo_libs all && make -j8 -C indigo_drivers/agent_platesolver -f ../../Makefile.drv all && make -j8 -C indigo_drivers/agent_scheduler -f ../../Makefile.drv all && make -j8 -C indigo_drivers/system_alpaca -f ../../Makefile.drv all && make -C indigo_test test-unit",
+        "commit": "51b2c3b9444afdf16fd1179cd6b86ef1e148880d",
+        "tree": "0cdad9c351e6489c6de8152f8c280530582080d1",
+        "exit_code": 0,
+        "counts": {
+          "executed": 13,
+          "failed": 0,
+          "skipped": 0
+        },
+        "passed": true,
+        "at": "2026-11-20T14:07:55.757947Z",
+        "duration_s": 146.8,
+        "log": "/tmp/factory-flow/656ea713-cb71-47ba-8636-9c52fefcc21d/0cdad9c351e6-unit.log",
+        "selected": [
+          "whitespace",
+          "unit"
+        ]
+      }
+    ],
+    "reviews": [
+      {
+        "kind": "code",
+        "verdict": "pass",
+        "notes": "Pass. Diff vs ticket/ea48a942 reviewed (tools/rpi_ctrl_v2.sh, test_rpi_ctrl_v2.py, Makefile, AGENTS.md, pbxproj). (1) rpi_ctrl_v2.sh:317 assigns the read channel only when non-empty; client mode without indigo-wifi now exits 1 quietly, active AP readback unchanged. (2) :553-555 output-based apt-cache show indigo3=<ver> check is right: host apt 2.8.4 prints nothing and exits 0 for a missing version (exits 100 only for an unknown package), stderr discarded, so the check is robust to either. (3) :449-462 guards run only for non-empty passwords and still __ALERT before any nmcli call; indigo_server's '' reaches the parser as an empty $2; open connect is quoted; failed open connect keeps the AP fallback. (4) :667 prints ${1}. Tests: make test-rpi-ctrl-v2 8/8 OK and test-rpi-ctrl-wifi-client 3/3 OK on this tree; read against the parent script each of the four defect tests fails (ALERT 'channel' not found, indigo=3.0-11 argv, WIFI_CN_PW not set, empty ${2}). Safety: PATH is stubs + grep/head/tr/which only, CONF_SYSCTL/PROC_FORWARD redirected and /etc|/proc absence asserted, /sys carrier read goes through the cat stub and is unreachable in these cases. Portability: PCRE case skips without grep -P; the other cases do not depend on GNU tools; /bin/bash 3.2 compatible. Xcode ID unique, git diff --check clean. Out of scope, for the owner (not required here): after a successful open join, update_wifi_setings (indigo_server.c:1543) runs --get-wifi-client and --get-wifi-server, which __ALERT \"'psk' not found\" (rpi_ctrl_v2.sh:477, :375) because an open profile has no psk [verify on hardware], so SERVER_WIFI_INFRASTRUCTURE (and AP) end in ALERT with a blank SSID although the join succeeded. Fixing it changes the get-commands' ALERT behaviour, which this ticket excluded; suggest a follow-up ticket.",
+        "reviewer": "human/Francesco Pham",
+        "commit": "b66848c1a697ca9ecb49bd1a176bce53d2c9fbf3",
+        "tree": "96bce1d5cb51fc84c578ba18f846f7f641fbf29e",
+        "at": "2026-11-20T13:29:11.639639Z"
+      },
+      {
+        "kind": "code",
+        "verdict": "pass",
+        "notes": "Round 2 pass at tree 0cdad9c3 (commit 51b2c3b94). Delta: rpi_ctrl_v2.sh:376 (__get-wifi-server) and :491 (__get-wifi-client) alert \"'psk' not found\" only when psk is empty and the active profile has 802-11-wireless-security.key-mgmt; [[ && ]] short-circuits, so the extra nmcli call happens only when psk is empty; the lookbehind key regex cannot match another key. indigo_server consumption (indigo_server.c:986-1031, called after --set-wifi-client at :1543, non-verbose): open client profile -> --get-wifi-client prints the SSID, so SERVER_WIFI_INFRASTRUCTURE is OK with the SSID and a cleared password; --get-wifi-server in client mode exits 1 with no output, so execute_query returns NULL and SERVER_WIFI_AP goes IDLE, as for a secured client; the attach-time 30 s retry (:1172) no longer fires for open networks. Verbose 'SSID<TAB>' gives an SSID token and no password token. Secured profiles without psk (wpa-psk, and wpa-eap/WEP/OWE, which also have key-mgmt) still alert as before. Tests: test_get_wifi_settings_of_open_network fails on the round-1 script (all four subtests print the ALERT) and passes now; the secured-without-psk test guards against over-relaxing; require_pcre is a straight extraction. make test-rpi-ctrl-v2 10/10 OK, 0 skipped; make test-rpi-ctrl-wifi-client 3/3 OK; git diff --check clean; AGENTS.md entry accurate. Coverage limit: open-profile nmcli output verified on a laptop NetworkManager, not on the Pi's [verify].",
+        "reviewer": "human/Francesco Pham",
+        "commit": "51b2c3b9444afdf16fd1179cd6b86ef1e148880d",
+        "tree": "0cdad9c351e6489c6de8152f8c280530582080d1",
+        "at": "2026-11-20T13:32:31.677408Z"
+      }
+    ],
+    "approvals": [],
+    "notes": [
+      {
+        "at": "2026-11-20T13:24:46.053739Z",
+        "actor": "human/Francesco Pham",
+        "text": "Reproduction (before fix) with indigo_test/unit/test_rpi_ctrl_v2.py on the unmodified tools/rpi_ctrl_v2.sh (stub-only PATH, CONF_SYSCTL/PROC_FORWARD redirected): 8 tests, 4 failures, one per defect. (1) --get-wifi-channel, no indigo-wifi profile active (nmcli exits 10, no output): stdout \"ALERT: 'channel' not found\" instead of a quiet exit 1. (2) --install-version 3.0-11 with apt-cache show indigo3=3.0-11 returning a record: apt-get argv was 'install -y --allow-downgrades indigo=3.0-11', expected indigo3=3.0-11. (3) --set-wifi-client fixture-net '': stdout 'ALERT: WIFI_CN_PW not set', expected OK and 'nmcli dev wifi connect fixture-net' with no password. (4) --bogus-option: printed 'unknown argument ' (empty ${2}). Passing before the fix: active AP channel readback (11), indigo (2.x) version install, 1/7/64-char password rejection without commands (the __ALERT guards from ea48a942 are already on this branch's base), 8/63-char join. Host check: apt 2.8.4 'apt-cache show bash=<missing version>' prints nothing and exits 0 (only an unknown package exits 100), so the indigo3 test must use the output, not the exit status.",
+        "tokens": null
+      },
+      {
+        "at": "2026-11-20T13:26:11.943373Z",
+        "actor": "human/Francesco Pham",
+        "text": "After fix: test_rpi_ctrl_v2.py 8/8 pass, none skipped (flow check --command 'make -C indigo_test test-rpi-ctrl-v2' passed; whitespace passed). test_rpi_ctrl_wifi_client.py from ea48a942 also still passes 3/3. Changes in tools/rpi_ctrl_v2.sh: (1) __read-wifi-channel assigns the read wifi_ch only when it is non-empty, otherwise WIFI_AP_CH keeps its value (default 6); (2) __install-version installs indigo3=<ver> when 'apt-cache show indigo3=<ver>' prints a record, otherwise indigo=<ver>. It checks the output rather than the exit status because apt 2.8 exits 0 with no output for a missing version. Behaviour of trixie's apt 3.x not checked [verify]; the output check works either way. (3) __set-wifi-client: an empty password runs 'nmcli dev wifi connect <ssid>' without password; the 8..63 length guards apply only to a non-empty password. (4) the parser prints 'unknown argument ${1}'. Coordination with ea48a942: this ticket's branch is based on ea48a942's branch (HEAD includes its two wip commits), so the __ALERT length guards are already in the base. Fix (3) moves both guards into the non-empty branch and keeps __ALERT, so a 1..7 or >63-char password still alerts before any nmcli call (tested with 1, 7 and 64 chars, no command issued). Open-network failure keeps the existing fallback: checked by hand with a failing connect stub, the script prints 'ALERT: failed to connect ... WiFi set to default AP' and rebuilds the indigosky AP. Not changed: VERSION=2.01, tools/rpi_ctrl.sh. Limitations: unit check not run because libusb-1.0/avahi-client dev packages are missing on this host; the active-AP channel case skips on hosts whose grep lacks -P (e.g. macOS BSD grep); the script itself needs GNU grep -P. Makefile.inc (gitignored) was generated in the worktree with 'make Makefile.inc' because indigo_test/Makefile includes it.",
+        "tokens": null
+      },
+      {
+        "at": "2026-11-20T13:29:42.810111Z",
+        "actor": "human/Francesco Pham",
+        "text": "Coordinator addition after review round 1 (pass): open-network support must also read back cleanly. After an open join, indigo_server re-reads (indigo_server.c ~1543); --get-wifi-client (rpi_ctrl_v2.sh ~477) and --get-wifi-server (~375) alert 'psk' not found because an open profile has no psk, so the properties go to ALERT although the join worked. Fix in this ticket: treat a missing psk as an open network when the profile has no 802-11-wireless-security.key-mgmt (empty password, no alert); keep alerting for a secured profile without psk. Output format unchanged otherwise.",
+        "tokens": null
+      },
+      {
+        "at": "2026-11-20T13:30:39.354521Z",
+        "actor": "human/Francesco Pham",
+        "text": "Coordinator addition (open-profile settings readback), reproduction before the fix: added test_get_wifi_settings_of_open_network and test_get_wifi_settings_of_secured_network_without_psk to test_rpi_ctrl_v2.py (stub nmcli -s con show: active indigo-wifi client profile with ssid/mode only, and one with key-mgmt wpa-psk but no psk). On the unfixed script --get-wifi-client, --verbose --get-wifi-client, --get-wifi-server and --verbose --get-wifi-server all printed \"ALERT: 'psk' not found\" for the open profile (4 subtest failures). indigo_server update_wifi_setings (indigo_server.c ~986-1030) reads only the first line via execute_query: an 'ALERT:' prefix sets SERVER_WIFI_AP / SERVER_WIFI_INFRASTRUCTURE to ALERT and clears the SSID, so after an open join the infrastructure property showed ALERT with a blank SSID. The secured-without-psk case already alerted, as expected.",
+        "tokens": null
+      },
+      {
+        "at": "2026-11-20T13:31:14.369547Z",
+        "actor": "human/Francesco Pham",
+        "text": "Coordinator addition, after the fix: --get-wifi-client and --get-wifi-server now alert \"'psk' not found\" only when the psk is empty AND the active profile has 802-11-wireless-security.key-mgmt. With no key-mgmt (open network) the password is empty. Open client profile: --get-wifi-client prints 'open-net' (exit 0), so indigo_server sets SERVER_WIFI_INFRASTRUCTURE OK with the SSID. --verbose prints 'open-net<TAB>' for both commands; strtok_r gives the SSID and no password token, so the password is cleared. --get-wifi-server in client mode exits 1 with no output, so execute_query returns NULL and SERVER_WIFI_AP goes IDLE, the same as for a secured client profile. A secured profile without psk still alerts for both commands. flow check on tree 0cdad9c3: test-rpi-ctrl-v2 10/10 passed, 0 skipped; test-rpi-ctrl-wifi-client 3/3 passed; whitespace passed. Unverified on real NetworkManager: that 'nmcli -s con show' prints no 802-11-wireless-security lines for an open profile [verify]. If it printed 'key-mgmt: --' the open case would still alert. indigo_test/AGENTS.md entry updated.",
+        "tokens": null
+      },
+      {
+        "at": "2026-11-20T13:31:45.144263Z",
+        "actor": "human/Francesco Pham",
+        "text": "Verified on real NetworkManager (Ubuntu laptop, read-only): for two saved open Wi-Fi profiles, 'nmcli con show <name>' prints no 802-11-wireless-security lines at all and 'nmcli -g 802-11-wireless-security.key-mgmt' is empty, matching the open-network stub used in test_rpi_ctrl_v2.py. Not yet checked on the Pi's NetworkManager version.",
+        "tokens": null
+      }
+    ],
+    "questions": [],
+    "presented": [],
+    "landing": {
+      "commit": "b68c90a1617c043bf313e486c5433c5146459938",
+      "tree": "0cdad9c351e6489c6de8152f8c280530582080d1",
+      "base": "ticket/ea48a942-7a0f-5a3f-b96d-41c06fd4ef0d",
+      "at": "2026-11-20T14:08:29.041809Z"
+    }
+  },
+  "proposal": {
+    "priority": "medium",
+    "severity": "medium",
+    "profile": "simple",
+    "at": "2026-11-20T13:06:59.748746Z",
+    "actor": "human/Francesco Pham",
+    "confirmed_at": "2026-11-20T13:10:22.813613Z",
+    "confirmed_by": "human/Francesco Pham"
+  },
+  "metrics": {
+    "duration_ms": 497411.766,
+    "duration_basis": "sum_of_completed_attempt_wall_times",
+    "running_attempts": 0,
+    "unknown_duration_attempts": 0,
+    "tokens": {
+      "input": null,
+      "known_input": null,
+      "output": null,
+      "known_output": null,
+      "total": null,
+      "known_total": null,
+      "complete": false,
+      "measured_attempts": 0,
+      "total_attempts": 3
+    }
+  },
+  "journal": {
+    "entries": 57,
+    "sha256": "38c78e7666d1a9bf3179eda7ec680f0b51cb1df346499adbfd12632b3feeb02c"
+  }
+}

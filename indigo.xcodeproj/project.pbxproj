@@ -1524,6 +1524,7 @@
 		5920893B2F857B5800E4A595 /* DRIVER_TESTING_BASICS.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = DRIVER_TESTING_BASICS.md; sourceTree = "<group>"; };
 		5920EDAF2B8E57AA00BF85F7 /* wifi_channel_selector.pl */ = {isa = PBXFileReference; lastKnownFileType = text.script.perl; path = wifi_channel_selector.pl; sourceTree = "<group>"; };
 		5920EDB02B8E57AA00BF85F7 /* rpi_ctrl_v2.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = rpi_ctrl_v2.sh; sourceTree = "<group>"; };
+		A81B9A7A22F32D33B98AF55A /* rpi_wifi_fallback.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = rpi_wifi_fallback.sh; sourceTree = "<group>"; };
 		5920EDB12B8E57DC00BF85F7 /* rpi_ctrl_fake.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = rpi_ctrl_fake.sh; sourceTree = "<group>"; };
 		59292E5620D4224F0042E939 /* libcurl.tbd */ = {isa = PBXFileReference; lastKnownFileType = "sourcecode.text-based-dylib-definition"; name = libcurl.tbd; path = usr/lib/libcurl.tbd; sourceTree = SDKROOT; };
 		592C32D93047793D004D5AE6 /* indigo_mount_synscan.driver */ = {isa = PBXFileReference; explicitFileType = sourcecode.c; path = indigo_mount_synscan.driver; sourceTree = "<group>"; };
@@ -9608,6 +9609,7 @@
 				59E4ADBD30607CA4002B1629 /* make_test_summary.py */,
 				59E4ADBF30607CA4002B1629 /* update_DELTA_UT1_UTC.sh */,
 				5920EDB02B8E57AA00BF85F7 /* rpi_ctrl_v2.sh */,
+				A81B9A7A22F32D33B98AF55A /* rpi_wifi_fallback.sh */,
 				5920EDB12B8E57DC00BF85F7 /* rpi_ctrl_fake.sh */,
 				5920EDAF2B8E57AA00BF85F7 /* wifi_channel_selector.pl */,
 				5989C387246C48A90005282C /* make_source_tarball.sh */,

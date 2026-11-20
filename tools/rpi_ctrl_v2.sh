@@ -25,7 +25,7 @@
 #
 # This version of the script uses network manager to setup WiFi AP and client.
 
-VERSION=2.01
+VERSION=2.02
 
 # Setup RPi as access point server.
 DEFAULT_WIFI_AP_SSID="indigosky"
@@ -90,8 +90,35 @@ OPT_VERBOSE=0
 # Valid WIFI channels
 WIFI_CHANNELS=('0' '1' '2' '3' '4' '5' '6' '7' '8' '9' '10' '11' '12' '13' '36' '40' '44' '48' '56' '60' '64' '100' '104' '108' '112' '116')
 
-# Connection network manager connection name
-CON_NAME="indigo-wifi"
+# NetworkManager profile of the access point. Client networks keep profiles
+# of their own, so every network joined once is remembered.
+AP_CON="indigo-ap"
+
+# Profile that version 2.01 used for both modes; an AP profile of that name
+# is renamed to AP_CON on first use.
+LEGACY_CON="indigo-wifi"
+
+# WiFi device.
+WIFI_DEV="wlan0"
+
+# Autoconnect priority of client profiles. The AP profile does not
+# autoconnect: --reset-wifi-server (indigo-wifi-fallback.service) raises it.
+CLIENT_PRIORITY=10
+
+# Seconds a client network may take to come up before the previous network
+# or the AP is restored.
+SWITCH_TIMEOUT=60
+
+# Transient unit that switches to a client network after the caller got its
+# reply, and the directory that hands it the password.
+SWITCH_UNIT="indigo-wifi-switch"
+RUN_DIR="/run/indigo-wifi"
+
+# Detached switch: the password file and this script's own path.
+WIFI_CN_PW_FILE=""
+OPT_WIFI_CN_SWITCH=0
+SELF="${0}"
+[[ "${SELF}" == /* ]] || SELF="${PWD}/${SELF}"
 
 # Required config files.
 CONF_SYSCTL="/etc/sysctl.conf"
@@ -112,6 +139,9 @@ DATE_EXE=$(which date)
 IW_EXE=$(which iw)
 RPI_CFG_EXE=$(which raspi-config)
 WIFI_CH_SELECT_EXE=$(which wifi_channel_selector.pl)
+SYSTEMD_RUN_EXE=$(which systemd-run)
+MKDIR_EXE=$(which mkdir)
+RM_EXE=$(which rm)
 
 ###############################################
 # Show usage and exit with code 1.
@@ -126,7 +156,7 @@ __usage() {
 	 "\t--get-wifi-channel\n" \
 	 "\t--set-wifi-channel <channel> (0 = automatically select in 2.4GHz band, available channels dpend on country regulations)\n" \
 	 "\t--get-wifi-client\n" \
-	 "\t--set-wifi-client <ssid> <password>\n" \
+	 "\t--set-wifi-client <ssid> <password> (empty password for an open network; replies at once and switches in the background)\n" \
 	 "\t--reset-wifi-server\n" \
 	 "\t--list-available-versions\n" \
 	 "\t--install-version <package-version>\n" \
@@ -201,11 +231,78 @@ __get() {
     echo $(${GREP_EXE} -oPm1 "(?<=${key}${delim}).*" ${conf_file})
 }
 
+###############################################
+# Name of the connection active on the WiFi
+# device, empty when there is none.
+###############################################
+__wifi_con() {
+
+    ${NM_CLI} -g GENERAL.CONNECTION dev show ${WIFI_DEV} 2>/dev/null
+}
+
+###############################################
+# Value of a setting of a connection profile,
+# by default of the one active on the WiFi
+# device, whatever its name.
+###############################################
 __nm_get() {
 
     local key=${1}
+    local con=${2-$(__wifi_con)}
 
-    echo $(${NM_CLI} -s con show --active ${CON_NAME} 2>/dev/null | grep -oPm1 "(?<=${key}:).*")
+    [[ -z ${con} ]] && return
+    echo $(${NM_CLI} -s con show "${con}" 2>/dev/null | ${GREP_EXE} -oPm1 "(?<=${key}:).*")
+}
+
+###############################################
+# Return 0 when a connection profile exists.
+###############################################
+__con_exists() {
+
+    ${NM_CLI} -g connection.id con show "${1}" >/dev/null 2>&1
+}
+
+###############################################
+# Rename the AP profile of version 2.01.
+###############################################
+__migrate() {
+
+    __con_exists ${AP_CON} && return
+    [[ "$(__nm_get 802-11-wireless.mode ${LEGACY_CON})" == "ap" ]] || return
+    ${NM_CLI} con modify ${LEGACY_CON} connection.id ${AP_CON} >/dev/null 2>&1
+}
+
+###############################################
+# Name of the client profile of an SSID,
+# empty when there is none.
+###############################################
+__client_con() {
+
+    local ssid=${1}
+    local line name
+
+    while IFS= read -r line; do
+        [[ "${line}" == *:802-11-wireless ]] || continue
+        name=${line%:802-11-wireless}
+        [[ "$(__nm_get 802-11-wireless.mode "${name}")" == "ap" ]] && continue
+        [[ "$(__nm_get 802-11-wireless.ssid "${name}")" == "${ssid}" ]] && { echo "${name}"; return; }
+    done < <(${NM_CLI} -g NAME,TYPE con show 2>/dev/null)
+}
+
+###############################################
+# Activate the AP profile; create it with the
+# default credentials when there is none.
+###############################################
+__ap-up() {
+
+    __migrate
+    if ! __con_exists ${AP_CON}; then
+        WIFI_AP_SSID=${DEFAULT_WIFI_AP_SSID}
+        WIFI_AP_PW=${DEFAULT_WIFI_AP_PW}
+        __set-wifi-server-silent
+        return 0
+    fi
+    ${NM_CLI} con up ${AP_CON} >/dev/null 2>&1
 }
 
 ###############################################
@@ -277,8 +374,15 @@ __set_wifi_country_code() {
     ${RPI_CFG_EXE} nonint do_wifi_country ${WIFI_COUNTRY_CODE} >/dev/null 2>&1
     [[ $? -ne 0 ]] && { __ALERT "cannot set WiFi country code ${WIFI_COUNTRY_CODE}"; }
 
-    WIFI_AP_SSID=${DEFAULT_WIFI_AP_SSID}
-    WIFI_AP_PW=${DEFAULT_WIFI_AP_PW}
+    # Restart the AP with its own credentials, the defaults when there is none.
+    __migrate
+    WIFI_AP_SSID=$(__nm_get 802-11-wireless.ssid ${AP_CON})
+    WIFI_AP_PW=$(__nm_get 802-11-wireless-security.psk ${AP_CON})
+    if [[ -z ${WIFI_AP_SSID} || -z ${WIFI_AP_PW} ]]; then
+        WIFI_AP_SSID=${DEFAULT_WIFI_AP_SSID}
+        WIFI_AP_PW=${DEFAULT_WIFI_AP_PW}
+    fi
+    __read-wifi-channel
     __set-wifi-server
     __OK
 
@@ -313,7 +417,10 @@ __read-wifi-credentials() {
 
 __read-wifi-channel() {
 
-    local wifi_ch=$(__nm_get "802-11-wireless.channel")
+    # The active AP, otherwise the stored AP profile.
+    local con=${AP_CON}
+    [[ "$(__get-wifi-mode)" == "wifi-server" ]] && con=$(__wifi_con)
+    local wifi_ch=$(__nm_get "802-11-wireless.channel" "${con}")
     [[ -z ${wifi_ch} ]] || WIFI_AP_CH=${wifi_ch}
 }
 
@@ -343,16 +450,14 @@ __set-wifi-server-silent() {
 
     [[ ${WIFI_AP_CH} -eq 0 ]] && __ALERT "Auto Channel Selection is not available"
 
-    ${NM_CLI} con delete ${CON_NAME} >/dev/null 2>&1
-    ${NM_CLI} con add type wifi ifname wlan0 mode ap con-name ${CON_NAME} ssid "${WIFI_AP_SSID}" >/dev/null 2>&1 && \
-    ${NM_CLI} con modify ${CON_NAME} 802-11-wireless.band ${WIFI_HW_MODE} >/dev/null 2>&1 && \
-    ${NM_CLI} con modify ${CON_NAME} 802-11-wireless.channel ${WIFI_AP_CH} >/dev/null 2>&1 && \
-    ${NM_CLI} con modify ${CON_NAME} 802-11-wireless-security.key-mgmt wpa-psk >/dev/null 2>&1 && \
-    ${NM_CLI} con modify ${CON_NAME} 802-11-wireless-security.psk "${WIFI_AP_PW}" >/dev/null 2>&1 && \
-    ${NM_CLI} con modify ${CON_NAME} ipv4.method shared >/dev/null 2>&1 && \
-    ${NM_CLI} con modify ${CON_NAME} ipv4.addr 192.168.235.1/24 >/dev/null 2>&1 && \
-    ${NM_CLI} con modify ${CON_NAME} connection.autoconnect yes >/dev/null 2>&1 && \
-    ${NM_CLI} con up ${CON_NAME} >/dev/null 2>&1
+    # Only the AP profile changes; client profiles stay as they are.
+    __migrate
+    if ! __con_exists ${AP_CON}; then
+        ${NM_CLI} con add type wifi ifname ${WIFI_DEV} mode ap con-name ${AP_CON} ssid "${WIFI_AP_SSID}" >/dev/null 2>&1
+        [[ $? -ne 0 ]] && __ALERT "cannot create AP with ssid '${WIFI_AP_SSID}'"
+    fi
+    ${NM_CLI} con modify ${AP_CON} 802-11-wireless.mode ap 802-11-wireless.ssid "${WIFI_AP_SSID}" 802-11-wireless.band ${WIFI_HW_MODE} 802-11-wireless.channel ${WIFI_AP_CH} 802-11-wireless-security.key-mgmt wpa-psk 802-11-wireless-security.psk "${WIFI_AP_PW}" ipv4.method shared ipv4.addresses 192.168.235.1/24 connection.autoconnect no >/dev/null 2>&1 && \
+    ${NM_CLI} con up ${AP_CON} >/dev/null 2>&1
     [[ $? -ne 0 ]] && __ALERT "cannot create AP with ssid '${WIFI_AP_SSID}'"
 }
 
@@ -367,21 +472,28 @@ __set-wifi-server() {
 __get-wifi-server() {
 
     local mode=$(__get-wifi-mode)
+    local con=$(__wifi_con)
 
-    WIFI_AP_SSID=$(__nm_get "802-11-wireless.ssid")
-    [[ -z ${WIFI_AP_SSID} ]] && __ALERT "'ssid' not found"
-
-    WIFI_AP_PW=$(__nm_get "802-11-wireless-security.psk")
-    # A profile without key-mgmt is an open network: empty password.
-    [[ -z ${WIFI_AP_PW} && -n $(__nm_get "802-11-wireless-security.key-mgmt") ]] && __ALERT "'psk' not found"
-
-    if [[ ${OPT_VERBOSE} -eq 1 ]]; then
-        { echo -e "${WIFI_AP_SSID}\t${WIFI_AP_PW}"; exit 0; }
-    elif [[ "${mode}" == "wifi-server" ]]; then
-        { echo -e "${WIFI_AP_SSID}"; exit 0; }
+    # In client mode only the verbose form reports the stored AP settings.
+    if [[ "${mode}" != "wifi-server" ]]; then
+        [[ ${OPT_VERBOSE} -eq 1 ]] || exit 1
+        con=${AP_CON}
+        [[ "$(__nm_get 802-11-wireless.mode ${LEGACY_CON})" == "ap" ]] && ! __con_exists ${AP_CON} && con=${LEGACY_CON}
     fi
 
-    exit 1;
+    WIFI_AP_SSID=$(__nm_get "802-11-wireless.ssid" "${con}")
+    [[ -z ${WIFI_AP_SSID} ]] && __ALERT "'ssid' not found"
+
+    WIFI_AP_PW=$(__nm_get "802-11-wireless-security.psk" "${con}")
+    # A profile without key-mgmt is an open network: empty password.
+    [[ -z ${WIFI_AP_PW} && -n $(__nm_get "802-11-wireless-security.key-mgmt" "${con}") ]] && __ALERT "'psk' not found"
+
+    if [[ ${OPT_VERBOSE} -eq 1 ]]; then
+        echo -e "${WIFI_AP_SSID}\t${WIFI_AP_PW}"
+    else
+        echo -e "${WIFI_AP_SSID}"
+    fi
+    exit 0
 }
 
 ###############################################
@@ -427,11 +539,12 @@ __set-wifi-channel() {
     fi
 
     if [[ "${mode}" == "wifi-server" ]]; then
-        ${NM_CLI} con modify ${CON_NAME} 802-11-wireless.band ${WIFI_HW_MODE} 802-11-wireless.channel ${WIFI_AP_CH} >/dev/null 2>&1 && \
-        ${NM_CLI} con up ${CON_NAME} >/dev/null 2>&1
+        local con=$(__wifi_con)
+        ${NM_CLI} con modify "${con}" 802-11-wireless.band ${WIFI_HW_MODE} 802-11-wireless.channel ${WIFI_AP_CH} >/dev/null 2>&1 && \
+        ${NM_CLI} con up "${con}" >/dev/null 2>&1
         if [[ $? -ne 0 ]]; then
-            ${NM_CLI} con modify ${CON_NAME} 802-11-wireless.band ${WIFI_HW_MODE} 802-11-wireless.channel 6 >/dev/null 2>&1 && \
-            ${NM_CLI} con up ${CON_NAME} >/dev/null 2>&1
+            ${NM_CLI} con modify "${con}" 802-11-wireless.band ${WIFI_HW_MODE} 802-11-wireless.channel 6 >/dev/null 2>&1 && \
+            ${NM_CLI} con up "${con}" >/dev/null 2>&1
             __ALERT "cannot set WiFi channel ${WIFI_AP_CH}, channel reset to default"
         fi
         sleep 1
@@ -453,27 +566,80 @@ __set-wifi-client() {
         [[ ${#WIFI_CN_PW} -gt 63 ]] && __ALERT "WIFI_CN_PW length > 63"
     fi
 
-    ${NM_CLI} con down ${CON_NAME} >/dev/null 2>&1
-    ${NM_CLI} con delete ${CON_NAME} >/dev/null 2>&1
-    sleep 3
-    if [[ -z ${WIFI_CN_PW} ]]; then
-        ${NM_CLI} dev wifi connect "${WIFI_CN_SSID}" >/dev/null 2>&1
+    # Hand the password over in a file readable by root only.
+    ${MKDIR_EXE} -p -m 700 "${RUN_DIR}" >/dev/null 2>&1
+    WIFI_CN_PW_FILE="${RUN_DIR}/client-psk"
+    ( umask 077; printf '%s' "${WIFI_CN_PW}" > "${WIFI_CN_PW_FILE}" ) 2>/dev/null || __ALERT "cannot store the WiFi password"
+
+    # The caller may be connected through the network that is about to go
+    # down: reply now and switch in a detached unit.
+    if [[ -n ${SYSTEMD_RUN_EXE} ]]; then
+        ${SYSTEMCTL_EXE} is-active --quiet ${SWITCH_UNIT} && __ALERT "a WiFi switch is already in progress"
+        ${SYSTEMD_RUN_EXE} --quiet --collect --unit=${SWITCH_UNIT} -- "${SELF}" --switch-wifi-client "${WIFI_CN_SSID}" "${WIFI_CN_PW_FILE}" >/dev/null 2>&1
+        [[ $? -ne 0 ]] && { ${RM_EXE} -f "${WIFI_CN_PW_FILE}"; __ALERT "cannot start the WiFi switch"; }
+        __OK
+    fi
+    __switch-wifi-client
+}
+
+###############################################
+# Switch to a client network. Restore the
+# previous network, or the AP, when the client
+# network does not come up.
+###############################################
+__switch-wifi-client() {
+
+    local pw=""
+    if [[ -n ${WIFI_CN_PW_FILE} && -f ${WIFI_CN_PW_FILE} ]]; then
+        pw=$(<"${WIFI_CN_PW_FILE}")
+        ${RM_EXE} -f "${WIFI_CN_PW_FILE}"
+    fi
+
+    __migrate
+    local prev=$(__wifi_con)
+    local con=$(__client_con "${WIFI_CN_SSID}")
+    local created=0
+    local old_mgmt=""
+    local old_psk=""
+
+    if [[ -z ${con} ]]; then
+        con="indigo-${WIFI_CN_SSID}"
+        ${NM_CLI} con add type wifi ifname ${WIFI_DEV} con-name "${con}" ssid "${WIFI_CN_SSID}" >/dev/null 2>&1
+        [[ $? -ne 0 ]] && __ALERT "cannot create a profile for WiFi network '${WIFI_CN_SSID}'"
+        created=1
     else
-        ${NM_CLI} dev wifi connect "${WIFI_CN_SSID}" password "${WIFI_CN_PW}" >/dev/null 2>&1
-    fi
-    local res=$?
-
-    ${NM_CLI} con modify "${WIFI_CN_SSID}" con-name ${CON_NAME} connection.autoconnect yes >/dev/null 2>&1
-    ${NM_CLI} con up ${CON_NAME} >/dev/null 2>&1
-
-    if [[ ${res} -ne 0 ]]; then
-	WIFI_AP_SSID=${DEFAULT_WIFI_AP_SSID}
-        WIFI_AP_PW=${DEFAULT_WIFI_AP_PW}
-        __set-wifi-server-silent
-        __ALERT "failed to connect to WiFi network '${WIFI_CN_SSID}', WiFi set to default AP"
+        old_mgmt=$(__nm_get 802-11-wireless-security.key-mgmt "${con}")
+        old_psk=$(__nm_get 802-11-wireless-security.psk "${con}")
     fi
 
-    __OK
+    if [[ -n ${pw} ]]; then
+        ${NM_CLI} con modify "${con}" 802-11-wireless-security.key-mgmt wpa-psk 802-11-wireless-security.psk "${pw}" >/dev/null 2>&1
+    elif [[ -n ${old_mgmt} ]]; then
+        ${NM_CLI} con modify "${con}" remove 802-11-wireless-security >/dev/null 2>&1
+    fi
+    ${NM_CLI} con modify "${con}" connection.autoconnect yes connection.autoconnect-priority ${CLIENT_PRIORITY} >/dev/null 2>&1
+
+    # A single radio does not scan while it is an AP: stop the AP and scan.
+    if [[ -n ${prev} && "$(__nm_get 802-11-wireless.mode "${prev}")" == "ap" ]]; then
+        ${NM_CLI} con down "${prev}" >/dev/null 2>&1
+    fi
+    ${NM_CLI} -w 15 dev wifi list --rescan yes >/dev/null 2>&1
+
+    ${NM_CLI} -w ${SWITCH_TIMEOUT} con up "${con}" >/dev/null 2>&1 && __OK
+
+    # Failed: undo the profile change, then restore connectivity.
+    if [[ ${created} -eq 1 ]]; then
+        ${NM_CLI} con delete "${con}" >/dev/null 2>&1
+    elif [[ -n ${old_mgmt} ]]; then
+        ${NM_CLI} con modify "${con}" 802-11-wireless-security.key-mgmt "${old_mgmt}" 802-11-wireless-security.psk "${old_psk}" >/dev/null 2>&1
+    elif [[ -n ${pw} ]]; then
+        ${NM_CLI} con modify "${con}" remove 802-11-wireless-security >/dev/null 2>&1
+    fi
+    if [[ -n ${prev} && "${prev}" != "${con}" ]] && ${NM_CLI} -w ${SWITCH_TIMEOUT} con up "${prev}" >/dev/null 2>&1; then
+        __ALERT "failed to connect to WiFi network '${WIFI_CN_SSID}', back on '${prev}'"
+    fi
+    __ap-up
+    __ALERT "failed to connect to WiFi network '${WIFI_CN_SSID}', WiFi set to AP"
 }
 
 ###############################################
@@ -482,44 +648,42 @@ __set-wifi-client() {
 __get-wifi-client() {
 
     local mode=$(__get-wifi-mode)
+    local con=$(__wifi_con)
 
-    WIFI_CN_SSID=$(__nm_get "802-11-wireless.ssid")
+    # In AP mode, or when not connected, there is no client network to report.
+    [[ "${mode}" == "wifi-client" && -n ${con} ]] || exit 1
+
+    WIFI_CN_SSID=$(__nm_get "802-11-wireless.ssid" "${con}")
     [[ -z ${WIFI_CN_SSID} ]] && __ALERT "'ssid' not found"
 
-    WIFI_CN_PW=$(__nm_get "802-11-wireless-security.psk")
+    WIFI_CN_PW=$(__nm_get "802-11-wireless-security.psk" "${con}")
     # A profile without key-mgmt is an open network: empty password.
-    [[ -z ${WIFI_CN_PW} && -n $(__nm_get "802-11-wireless-security.key-mgmt") ]] && __ALERT "'psk' not found"
-
+    [[ -z ${WIFI_CN_PW} && -n $(__nm_get "802-11-wireless-security.key-mgmt" "${con}") ]] && __ALERT "'psk' not found"
 
     if [[ ${OPT_VERBOSE} -eq 1 ]]; then
-	{ echo -e "${WIFI_CN_SSID}\t${WIFI_CN_PW}"; exit 0; }
-    elif [[ "${mode}" == "wifi-client" ]]; then
-	{ echo "${WIFI_CN_SSID}"; exit 0; }
+        echo -e "${WIFI_CN_SSID}\t${WIFI_CN_PW}"
+    else
+        echo "${WIFI_CN_SSID}"
     fi
-
-    exit 1;
+    exit 0
 }
 
 ###############################################
-# Reset WiFi access point settings to defaults
+# Activate the AP when the WiFi device is not
+# connected and Ethernet has no carrier.
 ###############################################
 __reset-wifi-server() {
 
-    local mode=$(__get-wifi-mode)
+    # A client switch in progress restores connectivity itself.
+    [[ -n ${SYSTEMD_RUN_EXE} ]] && ${SYSTEMCTL_EXE} is-active --quiet ${SWITCH_UNIT} && exit 0
+    # Ethernet link has carrier: the host stays reachable.
+    [[ $(${CAT_EXE} /sys/class/net/eth0/carrier 2>/dev/null) -eq 1 ]] && exit 0
+    # The WiFi device is connected (as a client or as the AP).
+    local state=$(${NM_CLI} -g GENERAL.STATE dev show ${WIFI_DEV} 2>/dev/null)
+    [[ "${state%% *}" == "100" ]] && exit 0
 
-    # RPi is in wifi-client mode.
-    if [[ "${mode}" == "wifi-client" ]]; then
-        # Network device wlan0 is not connected to infrastructure AP.
-        if ${IW_EXE} wlan0 link | ${GREP_EXE} -q "^Not"; then
-            # Ethernet link has no carrier.
-            if [[ $(${CAT_EXE} /sys/class/net/eth0/carrier 2>/dev/null) -eq 0 ]]; then
-                WIFI_AP_SSID=${DEFAULT_WIFI_AP_SSID}
-                WIFI_AP_PW=${DEFAULT_WIFI_AP_PW}
-                __set-wifi-server
-		__OK
-            fi
-        fi
-    fi
+    __ap-up || __ALERT "cannot activate the AP"
+    __OK
 }
 
 ###############################################
@@ -620,6 +784,14 @@ do
 	--get-wifi-client)
 	    OPT_WIFI_CN_GET=1
 	    ;;
+	--switch-wifi-client)
+	    # Internal: the detached part of --set-wifi-client.
+	    WIFI_CN_SSID="${2}"
+	    shift
+	    WIFI_CN_PW_FILE="${2}"
+	    shift
+	    OPT_WIFI_CN_SWITCH=1
+	    ;;
 	--set-wifi-client)
 	    WIFI_CN_SSID="${2}"
 	    shift
@@ -696,7 +868,8 @@ __check_file_exists ${RPI_CFG_EXE}
 [[ ${OPT_WIFI_CH_GET} -eq 1 ]] && { __get-wifi-channel; }
 [[ ${OPT_WIFI_CH_SET} -eq 1 ]] && { __set-wifi-channel; }
 [[ ${OPT_WIFI_CN_GET} -eq 1 ]] && { __get-wifi-client; }
-[[ ${OPT_WIFI_CN_SET} -eq 1 ]] && { __set-wifi-client ${WIFI_CN_SSID} ${WIFI_CN_PW}; }
+[[ ${OPT_WIFI_CN_SET} -eq 1 ]] && { __set-wifi-client; }
+[[ ${OPT_WIFI_CN_SWITCH} -eq 1 ]] && { __switch-wifi-client; }
 [[ ${OPT_WIFI_AP_RESET} -eq 1 ]] && { __reset-wifi-server; }
 [[ ${OPT_LIST_AVAIL_VERSIONS} -eq 1 ]] && { __list-available-versions; }
 [[ ! -z ${OPT_INSTALL_VERSION} ]] && { __install-version ${OPT_INSTALL_VERSION}; }
@@ -706,3 +879,4 @@ __check_file_exists ${RPI_CFG_EXE}
 [[ ${OPT_POWEROFF} -eq 1 ]] && { ${POWEROFF_EXE}; }
 [[ ${OPT_REBOOT} -eq 1 ]] && { ${REBOOT_EXE}; }
 
+exit 0

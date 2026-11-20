@@ -44,9 +44,13 @@ SSID = "fixture-net"
 # commands an older Raspberry Pi network setup might use. All of them only log.
 STUBBED = (
 	"apt-cache", "apt-get", "date", "dhcpcd", "hostapd", "ifdown", "ifup", "ip",
-	"iw", "nft", "nmcli", "poweroff", "raspi-config", "reboot", "service",
-	"sleep", "sudo", "systemctl", "wifi_channel_selector.pl", "wpa_cli",
+	"iw", "mkdir", "nft", "nmcli", "poweroff", "raspi-config", "reboot", "rm",
+	"service", "sleep", "sudo", "systemctl", "systemd-run",
+	"wifi_channel_selector.pl", "wpa_cli",
 )
+# systemctl reports no unit as active.
+SYSTEMCTL = '[ "$1" = is-active ] && exit 3\nexit 0\n'
+
 # File writers: logged, then the real tool runs on the redirected files.
 LOGGED_REAL = ("cat", "cp", "sed")
 # Read-only helpers the scripts need before any guard runs.
@@ -68,6 +72,8 @@ V1_FILES = {
 V2_FILES = {
 	"CONF_SYSCTL": ("sysctl.conf", "net.ipv4.ip_forward=1\n"),
 	"PROC_FORWARD": ("ip_forward", "1\n"),
+	# A directory: the password handed to the detached switch.
+	"RUN_DIR": ("run", None),
 }
 SCRIPTS = {
 	"rpi_ctrl.sh": V1_FILES,
@@ -94,7 +100,7 @@ class Sandbox:
 		self.log = self.root / "calls.log"
 		self.log.write_text("")
 		for name in STUBBED:
-			self._write_exe(stub_dir / name, STUB)
+			self._write_exe(stub_dir / name, STUB + (SYSTEMCTL if name == "systemctl" else ""))
 		for name in LOGGED_REAL:
 			self._write_exe(stub_dir / name, STUB + 'exec "' + real_tool(name) + '" "$@"\n')
 		for name in REAL:
@@ -102,6 +108,13 @@ class Sandbox:
 		text = (ROOT / "tools" / script).read_text()
 		for variable, (file_name, content) in SCRIPTS[script].items():
 			target = self.conf / file_name
+			if content is None:
+				target.mkdir()
+				self.run_dir = target
+				text, count = re.subn(r'^' + variable + r'="[^"]*"$', variable + '="' + str(target) + '"', text, flags=re.M)
+				if count != 1:
+					raise RuntimeError(script + ": cannot redirect " + variable)
+				continue
 			target.write_text(content)
 			# rpi_ctrl.sh copies its configuration files to *.orig on every
 			# run; existing copies keep that step from writing anything.
@@ -110,7 +123,7 @@ class Sandbox:
 			text, count = re.subn(r'^' + variable + r'="[^"]*"$', variable + '="' + str(target) + '"', text, flags=re.M)
 			if count != 1:
 				raise RuntimeError(script + ": cannot redirect " + variable)
-		if re.search(r'^[A-Z_]+="/(etc|proc)/', text, flags=re.M):
+		if re.search(r'^[A-Z_]+="/(etc|proc|run|var)/', text, flags=re.M):
 			raise RuntimeError(script + ": unredirected system path")
 		self.script = self.root / script
 		self.script.write_text(text)
@@ -127,7 +140,7 @@ class Sandbox:
 		path.chmod(0o755)
 
 	def snapshot(self):
-		return {path.name: path.read_text() for path in sorted(self.conf.iterdir())}
+		return {path.name: path.read_text() for path in sorted(self.conf.iterdir()) if path.is_file()}
 
 	def calls(self):
 		return [line.split("\x1f") for line in self.log.read_text().splitlines()]
@@ -184,7 +197,10 @@ class RpiCtrlWifiClientPasswordTest(unittest.TestCase):
 				result = sandbox.run(password)
 				self.assertEqual(result.stdout, "OK\n", result.stderr)
 				self.assertEqual(result.returncode, 0)
-				self.assertIn(["nmcli", "dev", "wifi", "connect", SSID, "password", password], sandbox.calls())
+				# v2 replies at once and joins in a detached unit.
+				password_file = sandbox.run_dir / "client-psk"
+				self.assertEqual(password_file.read_text(), password)
+				self.assertIn(["systemd-run", "--quiet", "--collect", "--unit=indigo-wifi-switch", "--", str(sandbox.script), "--switch-wifi-client", SSID, str(password_file)], sandbox.calls())
 
 
 if __name__ == "__main__":

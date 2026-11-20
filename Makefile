@@ -272,6 +272,7 @@ ifeq ($(ARCH_DETECTED),$(filter $(ARCH_DETECTED),arm arm64))
 	install -d $(INSTALL_ROOT)/usr/bin
 	install -m 0755 tools/rpi_ctrl.sh $(INSTALL_ROOT)/usr/bin
 	install -m 0755 tools/rpi_ctrl_v2.sh $(INSTALL_ROOT)/usr/bin
+	install -m 0755 tools/rpi_wifi_fallback.sh $(INSTALL_ROOT)/usr/bin
 	install -m 0755 tools/wifi_channel_selector.pl $(INSTALL_ROOT)/usr/bin
 endif
 	install -d $(INSTALL_ROOT)/usr/sbin
@@ -280,6 +281,7 @@ endif
 	install -d $(INSTALL_ROOT)/lib/systemd/system
 	install -m 0644 systemd/indigo-environment.service $(INSTALL_ROOT)/lib/systemd/system
 	install -m 0644 systemd/indigo-server.service $(INSTALL_ROOT)/lib/systemd/system
+	install -m 0644 systemd/indigo-wifi-fallback.service $(INSTALL_ROOT)/lib/systemd/system
 	install -d $(INSTALL_ROOT)/DEBIAN
 	printf "Package: $(INDIGO_PACKAGE)\n" > $(INSTALL_ROOT)/DEBIAN/control
 	printf "Version: $(INDIGO_VERSION)-$(INDIGO_PACKAGE_BUILD)\n" >> $(INSTALL_ROOT)/DEBIAN/control

@@ -1,0 +1,909 @@
+{
+  "schema_version": 1,
+  "ticket_id": "ea48a942-7a0f-5a3f-b96d-41c06fd4ef0d",
+  "revision": 46,
+  "title": "Wi-Fi client password guards execute text and continue destructive changes",
+  "description": "Invalid password guards invoke a quoted message as a command instead of __ALERT. Exact isolated-function stubs show password x writes configuration/disables or deletes the old connection and returns OK despite command-not-found. Reject invalid length before mutations and test lower/upper bounds plus valid controls. No network/service/reboot was executed. Next action: coordinator assigns a focused repair and relevant regression.\n\nImported from .factory/findings/active/FND-20261101215425-fa40-complete-full-repository-audit-003.json (category: functional, blocking: no).",
+  "type": "bug",
+  "discovered_at": null,
+  "created_at": "2026-11-15T07:52:30.848218Z",
+  "status": "closed",
+  "branch": "ticket/ea48a942-7a0f-5a3f-b96d-41c06fd4ef0d",
+  "related_ticket_id": null,
+  "config_overrides": {},
+  "tasks": [
+    {
+      "task_id": "072b0ff6-9771-4534-9a60-54ddf75d0741",
+      "title": "Implement",
+      "type": "implementation",
+      "status": "succeeded",
+      "depends_on": [],
+      "attempts": [
+        {
+          "attempt_id": "8b085376-98c1-4679-b3ce-0a83ad54f4f8",
+          "number": 1,
+          "execution_mode": "manual",
+          "worker": {
+            "provider": "anthropic",
+            "model": "claude-opus-5-5",
+            "reasoning": "high"
+          },
+          "status": "succeeded",
+          "started_at": "2026-11-20T13:10:30.200280Z",
+          "last_activity_at": "2026-11-20T13:17:10.944714Z",
+          "ended_at": "2026-11-20T13:17:10.944714Z",
+          "outcome": {
+            "summary": "Handed to review",
+            "recorded_by": "human/Francesco Pham",
+            "source": "human_report"
+          },
+          "duration_ms": 400744.434,
+          "tokens": null
+        },
+        {
+          "attempt_id": "3c9af80e-e202-495c-bbc2-bba3a82dfb07",
+          "number": 2,
+          "execution_mode": "manual",
+          "worker": {
+            "provider": "anthropic",
+            "model": "claude-opus-5-5",
+            "reasoning": "high"
+          },
+          "status": "succeeded",
+          "started_at": "2026-11-20T13:18:48.334014Z",
+          "last_activity_at": "2026-11-20T13:20:33.086680Z",
+          "ended_at": "2026-11-20T13:20:33.086680Z",
+          "outcome": {
+            "summary": "Handed to review",
+            "recorded_by": "human/Francesco Pham",
+            "source": "human_report"
+          },
+          "duration_ms": 104752.666,
+          "tokens": null
+        }
+      ],
+      "history": [
+        {
+          "at": "2026-11-20T13:10:30.200280Z",
+          "status": "running",
+          "actor": "human/Francesco Pham",
+          "reason": "Ticket branch ticket/ea48a942-7a0f-5a3f-b96d-41c06fd4ef0d"
+        },
+        {
+          "at": "2026-11-20T13:17:10.944714Z",
+          "status": "succeeded",
+          "actor": "human/Francesco Pham",
+          "reason": "Handed to review"
+        },
+        {
+          "at": "2026-11-20T13:18:48.334014Z",
+          "status": "running",
+          "actor": "human/Francesco Pham",
+          "reason": "Changes requested by review"
+        },
+        {
+          "at": "2026-11-20T13:20:33.086680Z",
+          "status": "succeeded",
+          "actor": "human/Francesco Pham",
+          "reason": "Handed to review"
+        }
+      ],
+      "result": null,
+      "paths": [],
+      "difficulty": "low",
+      "metrics": {
+        "duration_ms": 505497.1,
+        "duration_basis": "sum_of_completed_attempt_wall_times",
+        "running_attempts": 0,
+        "unknown_duration_attempts": 0,
+        "tokens": {
+          "input": null,
+          "known_input": null,
+          "output": null,
+          "known_output": null,
+          "total": null,
+          "known_total": null,
+          "complete": false,
+          "measured_attempts": 0,
+          "total_attempts": 2
+        }
+      }
+    },
+    {
+      "task_id": "60ac24d5-9d6d-4aea-8eda-91a8848b3749",
+      "title": "Review",
+      "type": "review",
+      "status": "succeeded",
+      "depends_on": [],
+      "attempts": [
+        {
+          "attempt_id": "4a442922-c6e1-49fe-bf40-0f8bb86ea19e",
+          "number": 1,
+          "execution_mode": "manual",
+          "worker": {
+            "provider": "anthropic",
+            "model": "claude-opus-5-5",
+            "reasoning": "high"
+          },
+          "status": "failed",
+          "started_at": "2026-11-20T13:17:10.944745Z",
+          "last_activity_at": "2026-11-20T13:18:48.333920Z",
+          "ended_at": "2026-11-20T13:18:48.333920Z",
+          "outcome": {
+            "summary": "Script fix is correct and minimal: tools/rpi_ctrl.sh:449-450 and tools/rpi_ctrl_v2.sh:450-451 now call __ALERT (echo + exit 1) before any backup/write/nmcli step, matching the neighbouring guards. The test reproduces the defect: on the old lines the bare string is executed as a command (status 127) and the scripts continue, so the length 7/64 assertions on stdout, empty call log and unchanged config fail; on the new tree make -C indigo_test test-rpi-ctrl-wifi-client passes (3 tests, GNU sed 4.9). Sandbox safety checked: every *_EXE comes from 'which' on a PATH of stubs plus symlinked grep/head/tr/which; sleep/systemctl/reboot/nmcli/raspi-config are stubs; all CONF_*/PROC_FORWARD assignments are rewritten (exactly-one-match check plus a /etc|/proc guard); *.orig files are pre-created so __create_reset_files copies nothing; the scripts have no absolute-path command calls on these paths. Wiring OK: test-unit depends on the new phony target (indigo_test/Makefile:377-382), the AGENTS.md list documents it, and the pbxproj adds the file to the indigo_test/unit group with a unique ID. Header matches indigo_test/AGENTS.md. git diff --check clean. DEFECT (must fix): the rpi_ctrl.sh positive control is not portable to macOS, where indigo_test (and so test-unit/test) is supported (Makefile has Darwin branches). The dhcpcd fixture (test_rpi_ctrl_wifi_client.py:62) contains the hotspot lines, so the accepted-password path runs the host's real sed via LOGGED_REAL (line 51) as 'sed -i \"s/...//\" file' (tools/rpi_ctrl.sh:472/475/478). BSD sed takes the expression as the -i backup suffix and the file path as the script, fails, and the script prints 'ALERT: cannot remove ...', so the subtests at lines 170-179 (rpi_ctrl.sh, lengths 8 and 63) fail and make -C indigo_test test-unit breaks on macOS [verify: not run on macOS; based on documented BSD sed -i semantics]. Suggested fix: keep sed out of the accepted path for this control, for example use a dhcpcd fixture without the three hotspo",
+            "recorded_by": "human/Francesco Pham",
+            "source": "human_report"
+          },
+          "duration_ms": 97389.175,
+          "tokens": null
+        },
+        {
+          "attempt_id": "f99e23b4-9bc3-4fe4-9a10-aa5f596aeb9e",
+          "number": 2,
+          "execution_mode": "manual",
+          "worker": null,
+          "status": "succeeded",
+          "started_at": "2026-11-20T13:20:33.086691Z",
+          "last_activity_at": "2026-11-20T13:20:33.086714Z",
+          "ended_at": "2026-11-20T13:20:33.086714Z",
+          "outcome": {
+            "summary": "Round 2: both findings resolved. The dhcpcd fixture (indigo_test/unit/test_rpi_ctrl_wifi_client.py:62-64) no longer has the access point lines, so the grep -Eq at tools/rpi_ctrl.sh:471 does not match and the GNU-only sed -i edits (472/475/478) are skipped; no other sed call is on the tested path, so the accepted-password runs are portable to BSD sed. The control still proves lengths 8 and 63 pass the guard: stdout OK, psk written to wpa_supplicant.conf, systemctl disable hostapd and reboot logged (v1); nmcli dev wifi connect with the password, exit 0 (v2). The rejection cases are unchanged and still fail on the unfixed scripts (the old code runs the logged cp backups and rewrites wpa_supplicant.conf / issues nmcli calls before reaching OK). indigo_test/AGENTS.md:65 now lists the PATH contents accurately. Script fix, sandbox safety, Makefile and Xcode wiring unchanged from round 1 and still correct. make -C indigo_test test-rpi-ctrl-wifi-client: 3 tests OK on this tree; git diff --check master...HEAD clean. Not run on macOS. The unit check's libindigo build failure is the known environment limitation, not a finding.",
+            "recorded_by": "human/Francesco Pham",
+            "source": "human_report"
+          },
+          "duration_ms": 0.023,
+          "tokens": null
+        },
+        {
+          "attempt_id": "f28b61d2-584d-47a2-838c-c4fd9a35ddf7",
+          "number": 3,
+          "execution_mode": "manual",
+          "worker": {
+            "provider": "anthropic",
+            "model": "claude-opus-5-5",
+            "reasoning": "high"
+          },
+          "status": "succeeded",
+          "started_at": "2026-11-20T14:08:54.061616Z",
+          "last_activity_at": "2026-11-20T14:10:13.061988Z",
+          "ended_at": "2026-11-20T14:10:13.061988Z",
+          "outcome": {
+            "summary": "Combined tree review (master...HEAD incl. merged sub-ticket 656ea713, b68c90a16). rpi_ctrl.sh:449-450 and rpi_ctrl_v2.sh:452-453 now use __ALERT so lengths 7/64 exit before any mutation; v2 empty password skips the length checks and joins with 'nmcli dev wifi connect SSID' (rpi_ctrl_v2.sh:450-463). v2 channel readback (317), psk-only-required-with-key-mgmt readback (376, 491), indigo3 install via apt-cache show (555-557) and unknown-argument ${1} (669) are correct. Test files agree with the final v2 script: test_rpi_ctrl_wifi_client.py checks v2 7/64 rejected and 8/63 accepted, which the open-network change preserves; test_rpi_ctrl_v2.py adds the empty-password open join and repeats 1/7/64 and 8/63. Makefile wires both PHONY targets into test-unit (indigo_test/Makefile:377-387); test target reaches them once via test-unit. Xcode: both PBXFileReference IDs unique, listed once in the unit group (path = unit). AGENTS.md lines match both modules. Safety: bash by absolute path, PATH = stubs + symlinked grep/head/tr/which (+ logging wrappers of real cat/cp/sed in the v1 test only, on redirected files); both sandboxes refuse a copy that still names /etc or /proc; scripts contain no hard-coded absolute command paths (only a read of /sys/class/net/eth0/carrier in reset paths not exercised). Ran make -C indigo_test test-rpi-ctrl-wifi-client (3 OK) and test-rpi-ctrl-v2 (10 OK, no skips on this host with GNU grep). Non-blocking notes: v2 password-length cases are duplicated across the two test files; v1 still rejects an empty client password while v2 accepts it (intentional, v2-only scope); the PCRE-dependent v2 cases skip on BSD grep (documented).",
+            "recorded_by": "human/Francesco Pham",
+            "source": "human_report"
+          },
+          "duration_ms": 79000.372,
+          "tokens": null
+        }
+      ],
+      "history": [
+        {
+          "at": "2026-11-20T13:17:10.944745Z",
+          "status": "running",
+          "actor": "human/Francesco Pham",
+          "reason": "Review started"
+        },
+        {
+          "at": "2026-11-20T13:18:48.333920Z",
+          "status": "failed",
+          "actor": "human/Francesco Pham",
+          "reason": "Script fix is correct and minimal: tools/rpi_ctrl.sh:449-450 and tools/rpi_ctrl_v2.sh:450-451 now call __ALERT (echo + exit 1) before any backup/write/nmcli step, matching the neighbouring guards. The test reproduces the defect: on the old lines the bare string is executed as a command (status 127) and the scripts continue, so the length 7/64 assertions on stdout, empty call log and unchanged config fail; on the new tree make -C indigo_test test-rpi-ctrl-wifi-client passes (3 tests, GNU sed 4.9). Sandbox safety checked: every *_EXE comes from 'which' on a PATH of stubs plus symlinked grep/head/tr/which; sleep/systemctl/reboot/nmcli/raspi-config are stubs; all CONF_*/PROC_FORWARD assignments are rewritten (exactly-one-match check plus a /etc|/proc guard); *.orig files are pre-created so __create_reset_files copies nothing; the scripts have no absolute-path command calls on these paths. Wiring OK: test-unit depends on the new phony target (indigo_test/Makefile:377-382), the AGENTS.md list documents it, and the pbxproj adds the file to the indigo_test/unit group with a unique ID. Header matches indigo_test/AGENTS.md. git diff --check clean. DEFECT (must fix): the rpi_ctrl.sh positive control is not portable to macOS, where indigo_test (and so test-unit/test) is supported (Makefile has Darwin branches). The dhcpcd fixture (test_rpi_ctrl_wifi_client.py:62) contains the hotspot lines, so the accepted-password path runs the host's real sed via LOGGED_REAL (line 51) as 'sed -i \"s/...//\" file' (tools/rpi_ctrl.sh:472/475/478). BSD sed takes the expression as the -i backup suffix and the file path as the script, fails, and the script prints 'ALERT: cannot remove ...', so the subtests at lines 170-179 (rpi_ctrl.sh, lengths 8 and 63) fail and make -C indigo_test test-unit breaks on macOS [verify: not run on macOS; based on documented BSD sed -i semantics]. Suggested fix: keep sed out of the accepted path for this control, for example use a dhcpcd fixture without the three hotspo"
+        },
+        {
+          "at": "2026-11-20T13:20:33.086691Z",
+          "status": "running",
+          "actor": "human/Francesco Pham",
+          "reason": "Review started"
+        },
+        {
+          "at": "2026-11-20T13:20:33.086714Z",
+          "status": "succeeded",
+          "actor": "human/Francesco Pham",
+          "reason": "Round 2: both findings resolved. The dhcpcd fixture (indigo_test/unit/test_rpi_ctrl_wifi_client.py:62-64) no longer has the access point lines, so the grep -Eq at tools/rpi_ctrl.sh:471 does not match and the GNU-only sed -i edits (472/475/478) are skipped; no other sed call is on the tested path, so the accepted-password runs are portable to BSD sed. The control still proves lengths 8 and 63 pass the guard: stdout OK, psk written to wpa_supplicant.conf, systemctl disable hostapd and reboot logged (v1); nmcli dev wifi connect with the password, exit 0 (v2). The rejection cases are unchanged and still fail on the unfixed scripts (the old code runs the logged cp backups and rewrites wpa_supplicant.conf / issues nmcli calls before reaching OK). indigo_test/AGENTS.md:65 now lists the PATH contents accurately. Script fix, sandbox safety, Makefile and Xcode wiring unchanged from round 1 and still correct. make -C indigo_test test-rpi-ctrl-wifi-client: 3 tests OK on this tree; git diff --check master...HEAD clean. Not run on macOS. The unit check's libindigo build failure is the known environment limitation, not a finding."
+        },
+        {
+          "at": "2026-11-20T14:08:54.061616Z",
+          "status": "running",
+          "actor": "human/Francesco Pham",
+          "reason": "Review started"
+        },
+        {
+          "at": "2026-11-20T14:10:13.061988Z",
+          "status": "succeeded",
+          "actor": "human/Francesco Pham",
+          "reason": "Combined tree review (master...HEAD incl. merged sub-ticket 656ea713, b68c90a16). rpi_ctrl.sh:449-450 and rpi_ctrl_v2.sh:452-453 now use __ALERT so lengths 7/64 exit before any mutation; v2 empty password skips the length checks and joins with 'nmcli dev wifi connect SSID' (rpi_ctrl_v2.sh:450-463). v2 channel readback (317), psk-only-required-with-key-mgmt readback (376, 491), indigo3 install via apt-cache show (555-557) and unknown-argument ${1} (669) are correct. Test files agree with the final v2 script: test_rpi_ctrl_wifi_client.py checks v2 7/64 rejected and 8/63 accepted, which the open-network change preserves; test_rpi_ctrl_v2.py adds the empty-password open join and repeats 1/7/64 and 8/63. Makefile wires both PHONY targets into test-unit (indigo_test/Makefile:377-387); test target reaches them once via test-unit. Xcode: both PBXFileReference IDs unique, listed once in the unit group (path = unit). AGENTS.md lines match both modules. Safety: bash by absolute path, PATH = stubs + symlinked grep/head/tr/which (+ logging wrappers of real cat/cp/sed in the v1 test only, on redirected files); both sandboxes refuse a copy that still names /etc or /proc; scripts contain no hard-coded absolute command paths (only a read of /sys/class/net/eth0/carrier in reset paths not exercised). Ran make -C indigo_test test-rpi-ctrl-wifi-client (3 OK) and test-rpi-ctrl-v2 (10 OK, no skips on this host with GNU grep). Non-blocking notes: v2 password-length cases are duplicated across the two test files; v1 still rejects an empty client password while v2 accepts it (intentional, v2-only scope); the PCRE-dependent v2 cases skip on BSD grep (documented)."
+        }
+      ],
+      "result": {
+        "summary": "Combined tree review (master...HEAD incl. merged sub-ticket 656ea713, b68c90a16). rpi_ctrl.sh:449-450 and rpi_ctrl_v2.sh:452-453 now use __ALERT so lengths 7/64 exit before any mutation; v2 empty password skips the length checks and joins with 'nmcli dev wifi connect SSID' (rpi_ctrl_v2.sh:450-463). v2 channel readback (317), psk-only-required-with-key-mgmt readback (376, 491), indigo3 install via apt-cache show (555-557) and unknown-argument ${1} (669) are correct. Test files agree with the final v2 script: test_rpi_ctrl_wifi_client.py checks v2 7/64 rejected and 8/63 accepted, which the open-network change preserves; test_rpi_ctrl_v2.py adds the empty-password open join and repeats 1/7/64 and 8/63. Makefile wires both PHONY targets into test-unit (indigo_test/Makefile:377-387); test target reaches them once via test-unit. Xcode: both PBXFileReference IDs unique, listed once in the unit group (path = unit). AGENTS.md lines match both modules. Safety: bash by absolute path, PATH = stubs + symlinked grep/head/tr/which (+ logging wrappers of real cat/cp/sed in the v1 test only, on redirected files); both sandboxes refuse a copy that still names /etc or /proc; scripts contain no hard-coded absolute command paths (only a read of /sys/class/net/eth0/carrier in reset paths not exercised). Ran make -C indigo_test test-rpi-ctrl-wifi-client (3 OK) and test-rpi-ctrl-v2 (10 OK, no skips on this host with GNU grep). Non-blocking notes: v2 password-length cases are duplicated across the two test files; v1 still rejects an empty client password while v2 accepts it (intentional, v2-only scope); the PCRE-dependent v2 cases skip on BSD grep (documented).",
+        "source": "review",
+        "recorded_by": "human/Francesco Pham"
+      },
+      "paths": [],
+      "difficulty": "low",
+      "metrics": {
+        "duration_ms": 176389.57,
+        "duration_basis": "sum_of_completed_attempt_wall_times",
+        "running_attempts": 0,
+        "unknown_duration_attempts": 0,
+        "tokens": {
+          "input": null,
+          "known_input": null,
+          "output": null,
+          "known_output": null,
+          "total": null,
+          "known_total": null,
+          "complete": false,
+          "measured_attempts": 0,
+          "total_attempts": 3
+        }
+      }
+    }
+  ],
+  "history": [
+    {
+      "event_id": "2222ba7b-b1f4-433a-b6d0-5e7990f9fa31",
+      "event": "ticket/created",
+      "at": "2026-11-15T07:52:30.848239Z",
+      "actor": "upgrade/legacy",
+      "origin": ".factory/findings/active/FND-20261101215425-fa40-complete-full-repository-audit-003.json",
+      "source": "c6237e069898634172822b45d7d257d4ff1e097c0da83cdd740242edf866e224",
+      "priority": "low",
+      "severity": "medium"
+    },
+    {
+      "event_id": "336bcd7c-d7cc-4bd2-9eb3-6ed8dc739e53",
+      "event": "ticket/priority_changed",
+      "at": "2026-11-15T08:55:28.174481Z",
+      "actor": "human/owner",
+      "field": "priority",
+      "previousOverride": null,
+      "newOverride": "medium",
+      "previous_priority": null,
+      "priority": "medium"
+    },
+    {
+      "event_id": "85a553be-e98c-4d09-8813-97a86d55fe63",
+      "event": "ticket/severity_changed",
+      "at": "2026-11-15T08:55:28.325266Z",
+      "actor": "human/owner",
+      "field": "severity",
+      "previousOverride": "medium",
+      "newOverride": "high"
+    },
+    {
+      "event_id": "3fee3257-dbb0-4017-8766-ab697a35e249",
+      "event": "ticket/difficulty_changed",
+      "at": "2026-11-15T08:55:28.465139Z",
+      "actor": "human/owner",
+      "previous_difficulty": null,
+      "difficulty": "low"
+    },
+    {
+      "event_id": "87d51ae6-0a3b-43c7-b8e3-49554c0b3e89",
+      "event": "task/progress",
+      "at": "2026-11-20T13:10:30.200370Z",
+      "actor": "human/Francesco Pham",
+      "task_id": "072b0ff6-9771-4534-9a60-54ddf75d0741",
+      "text": "Implementation started on branch ticket/ea48a942-7a0f-5a3f-b96d-41c06fd4ef0d"
+    },
+    {
+      "event_id": "da50cde8-5cd0-445e-b400-38652b13913f",
+      "event": "ticket/started",
+      "at": "2026-11-20T13:10:30.200895Z",
+      "actor": "human/Francesco Pham",
+      "branch": "ticket/ea48a942-7a0f-5a3f-b96d-41c06fd4ef0d",
+      "base": "master"
+    },
+    {
+      "event_id": "324e3c18-4ea2-44a0-93a7-c73017d3bb79",
+      "event": "task/progress",
+      "at": "2026-11-20T13:11:08.259280Z",
+      "actor": "human/Francesco Pham",
+      "task_id": "072b0ff6-9771-4534-9a60-54ddf75d0741",
+      "text": "Reading AGENTS.md and rpi_ctrl scripts",
+      "attempt_id": "8b085376-98c1-4679-b3ce-0a83ad54f4f8",
+      "worker": {
+        "provider": "anthropic",
+        "model": "claude-opus-5-5",
+        "reasoning": "high"
+      }
+    },
+    {
+      "event_id": "714a4042-debc-4563-b086-85457689ae69",
+      "event": "task/progress",
+      "at": "2026-11-20T13:12:50.918359Z",
+      "actor": "human/Francesco Pham",
+      "task_id": "072b0ff6-9771-4534-9a60-54ddf75d0741",
+      "text": "Writing stubbed regression test for rpi_ctrl Wi-Fi client password guards"
+    },
+    {
+      "event_id": "346c1528-cedc-4c54-bfdf-d66f92b92c41",
+      "event": "task/progress",
+      "at": "2026-11-20T13:13:48.640479Z",
+      "actor": "human/Francesco Pham",
+      "task_id": "072b0ff6-9771-4534-9a60-54ddf75d0741",
+      "text": "Running new test against unfixed scripts (reproduction)"
+    },
+    {
+      "event_id": "2c6b7b7f-02eb-44b1-9d32-ed05699e6061",
+      "event": "ticket/note",
+      "at": "2026-11-20T13:14:01.645231Z",
+      "actor": "human/Francesco Pham",
+      "text": "Reproduction (before fix): new indigo_test/unit/test_rpi_ctrl_wifi_client.py runs each script copy with config paths redirected to a temp dir and PATH limited to argv-logging stubs plus which/grep/head/tr (non-root, no host network/service command reachable). Password length 7 and 64: both scripts print 'OK' instead of 'ALERT: WIFI_CN_PW length < 8/> 63', stderr shows 'WIFI_CN_PW length < 8: command not found' (rpi_ctrl.sh:449-450, rpi_ctrl_v2.sh:450-451). Length 7 call logs: v1 cp wpa_supplicant/dhcpcd backups, cat > wpa_supplicant.conf, 3x sed -i dhcpcd.conf, systemctl disable hostapd, reboot (exit 1 from last option test); v2 nmcli con down/delete indigo-wifi, dev wifi connect, con modify, con up, exit 0. Result: 4 failing subtests (both scripts x 7/64); controls 8/63 pass.",
+      "tokens": null
+    },
+    {
+      "event_id": "fb64278a-a337-4c93-8496-f099a7030c52",
+      "event": "task/progress",
+      "at": "2026-11-20T13:14:40.718540Z",
+      "actor": "human/Francesco Pham",
+      "task_id": "072b0ff6-9771-4534-9a60-54ddf75d0741",
+      "text": "Running flow check (whitespace + unit)"
+    },
+    {
+      "event_id": "46d61aec-c291-4b9a-b8f5-ce16524baea7",
+      "event": "task/progress",
+      "at": "2026-11-20T13:14:40.961493Z",
+      "actor": "human/Francesco Pham",
+      "task_id": "072b0ff6-9771-4534-9a60-54ddf75d0741",
+      "text": "Check whitespace started"
+    },
+    {
+      "event_id": "bd7375c3-e452-4e33-97e0-8a23fe8cbe83",
+      "event": "task/progress",
+      "at": "2026-11-20T13:14:41.005807Z",
+      "actor": "human/Francesco Pham",
+      "task_id": "072b0ff6-9771-4534-9a60-54ddf75d0741",
+      "text": "Check whitespace passed"
+    },
+    {
+      "event_id": "8b362e4d-9b3a-499b-84fd-d086e481bbaf",
+      "event": "task/progress",
+      "at": "2026-11-20T13:14:41.017460Z",
+      "actor": "human/Francesco Pham",
+      "task_id": "072b0ff6-9771-4534-9a60-54ddf75d0741",
+      "text": "Check unit started"
+    },
+    {
+      "event_id": "cfdb4b16-5fbd-44ca-8e38-6c388f0d7639",
+      "event": "task/progress",
+      "at": "2026-11-20T13:15:22.118793Z",
+      "actor": "human/Francesco Pham",
+      "task_id": "072b0ff6-9771-4534-9a60-54ddf75d0741",
+      "text": "Check unit failed: exit code 2"
+    },
+    {
+      "event_id": "44184d7f-0a20-4765-bf35-e42700039483",
+      "event": "check/failed",
+      "at": "2026-11-20T13:15:22.129336Z",
+      "actor": "human/Francesco Pham",
+      "commit": "427c38baa083a8a159f3a03982aebae91d6d50b1",
+      "checks": "whitespace passed, unit FAILED"
+    },
+    {
+      "event_id": "db472d27-6c9c-418d-b0e4-2a734514813c",
+      "event": "task/progress",
+      "at": "2026-11-20T13:16:18.003529Z",
+      "actor": "human/Francesco Pham",
+      "task_id": "072b0ff6-9771-4534-9a60-54ddf75d0741",
+      "text": "Check command-1 started: make -C indigo_test test-rpi-ctrl-wifi-client"
+    },
+    {
+      "event_id": "71ce36bf-7b3d-4040-b6ac-658e5d7ce006",
+      "event": "task/progress",
+      "at": "2026-11-20T13:16:18.378640Z",
+      "actor": "human/Francesco Pham",
+      "task_id": "072b0ff6-9771-4534-9a60-54ddf75d0741",
+      "text": "Check command-1 passed: 3 tests"
+    },
+    {
+      "event_id": "6bddfe88-093e-4fd1-b02b-febf7019f5ff",
+      "event": "check/passed",
+      "at": "2026-11-20T13:16:18.391634Z",
+      "actor": "human/Francesco Pham",
+      "commit": "427c38baa083a8a159f3a03982aebae91d6d50b1",
+      "checks": "command-1 passed"
+    },
+    {
+      "event_id": "604ffa3f-f47b-45fc-ba28-77130d517145",
+      "event": "ticket/note",
+      "at": "2026-11-20T13:16:24.981492Z",
+      "actor": "human/Francesco Pham",
+      "text": "After fix (both scripts use __ALERT for the WIFI_CN_PW length checks): same test passes, 3 tests / 6 subtests OK. Lengths 7 and 64 print 'ALERT: WIFI_CN_PW length < 8' / '> 63', exit 1, empty stub call log, config files unchanged, no 'command not found'; lengths 8 and 63 still proceed (v1 writes psk, systemctl disable hostapd, reboot; v2 nmcli dev wifi connect, exit 0). flow check --command 'make -C indigo_test test-rpi-ctrl-wifi-client' passed on tree e0ddb360. Plain flow check: whitespace passed; unit FAILED for an environment reason unrelated to the change: this host lacks libusb-1.0 and avahi-client development files (ld: cannot find -lusb-1.0; avahi-client/client.h missing; libjpeg/libtiff/hidapi configure 'C compiler cannot create executables' for the same -lusb-1.0 link), so libindigo does not build and test-unit cannot start. Installing packages needs root and was not done.",
+      "tokens": null
+    },
+    {
+      "event_id": "520626af-75fe-45a5-a7e9-58e671b117fa",
+      "event": "task/progress",
+      "at": "2026-11-20T13:17:10.944802Z",
+      "actor": "human/Francesco Pham",
+      "task_id": "60ac24d5-9d6d-4aea-8eda-91a8848b3749",
+      "text": "Review started"
+    },
+    {
+      "event_id": "bcf2e82f-b049-4558-83a7-07d8828cf6fa",
+      "event": "review/started",
+      "at": "2026-11-20T13:17:10.945377Z",
+      "actor": "human/Francesco Pham",
+      "kind": "code"
+    },
+    {
+      "event_id": "b33003d0-38c1-4aee-8a5c-8a82839ddc34",
+      "event": "task/progress",
+      "at": "2026-11-20T13:17:16.110826Z",
+      "actor": "human/Francesco Pham",
+      "task_id": "60ac24d5-9d6d-4aea-8eda-91a8848b3749",
+      "text": "Reviewing diff of Wi-Fi password guards and new unit test",
+      "attempt_id": "4a442922-c6e1-49fe-bf40-0f8bb86ea19e",
+      "worker": {
+        "provider": "anthropic",
+        "model": "claude-opus-5-5",
+        "reasoning": "high"
+      }
+    },
+    {
+      "event_id": "1df6ac28-c2aa-4668-9c90-53307142e7fb",
+      "event": "task/progress",
+      "at": "2026-11-20T13:18:16.767375Z",
+      "actor": "human/Francesco Pham",
+      "task_id": "60ac24d5-9d6d-4aea-8eda-91a8848b3749",
+      "text": "Running narrow test: make -C indigo_test test-rpi-ctrl-wifi-client"
+    },
+    {
+      "event_id": "bfe8fe54-cc8e-42d5-bd3f-1d8f654a4993",
+      "event": "task/progress",
+      "at": "2026-11-20T13:18:48.334006Z",
+      "actor": "human/Francesco Pham",
+      "task_id": "60ac24d5-9d6d-4aea-8eda-91a8848b3749",
+      "text": "Review finished: changes requested"
+    },
+    {
+      "event_id": "2d8eea40-8919-4acd-b848-78d41d6f6000",
+      "event": "task/progress",
+      "at": "2026-11-20T13:18:48.334042Z",
+      "actor": "human/Francesco Pham",
+      "task_id": "072b0ff6-9771-4534-9a60-54ddf75d0741",
+      "text": "Implementation resumed: the review requested changes"
+    },
+    {
+      "event_id": "e53d65e0-c480-4703-a886-0a582c0ee959",
+      "event": "review/changes_requested",
+      "at": "2026-11-20T13:18:48.334761Z",
+      "actor": "human/Francesco Pham",
+      "task_id": "60ac24d5-9d6d-4aea-8eda-91a8848b3749",
+      "kind": "code",
+      "verdict": "changes",
+      "commit": "427c38baa083a8a159f3a03982aebae91d6d50b1"
+    },
+    {
+      "event_id": "feb92290-50c2-4c1f-81c0-4fb1bbbe86d0",
+      "event": "task/progress",
+      "at": "2026-11-20T13:19:40.406103Z",
+      "actor": "human/Francesco Pham",
+      "task_id": "072b0ff6-9771-4534-9a60-54ddf75d0741",
+      "text": "Review fixes: BSD-sed-safe dhcpcd fixture, AGENTS.md wording; rerunning test"
+    },
+    {
+      "event_id": "88b880ef-4503-47c5-ab2b-deb412c5f89a",
+      "event": "task/progress",
+      "at": "2026-11-20T13:19:47.733481Z",
+      "actor": "human/Francesco Pham",
+      "task_id": "072b0ff6-9771-4534-9a60-54ddf75d0741",
+      "text": "Check command-1 started: make -C indigo_test test-rpi-ctrl-wifi-client"
+    },
+    {
+      "event_id": "87ae818b-6c13-4f4b-b4d6-aade62945614",
+      "event": "task/progress",
+      "at": "2026-11-20T13:19:48.059620Z",
+      "actor": "human/Francesco Pham",
+      "task_id": "072b0ff6-9771-4534-9a60-54ddf75d0741",
+      "text": "Check command-1 passed: 3 tests"
+    },
+    {
+      "event_id": "e32e77c3-954f-4361-9b2c-bc0b5dd6ee1d",
+      "event": "check/passed",
+      "at": "2026-11-20T13:19:48.071331Z",
+      "actor": "human/Francesco Pham",
+      "commit": "0e0014cac3ea39ab544bc3c5cdc11c1e592afced",
+      "checks": "command-1 passed"
+    },
+    {
+      "event_id": "869368da-8fc9-46ed-a859-5c077f77252a",
+      "event": "task/progress",
+      "at": "2026-11-20T13:19:48.229849Z",
+      "actor": "human/Francesco Pham",
+      "task_id": "072b0ff6-9771-4534-9a60-54ddf75d0741",
+      "text": "Check whitespace started"
+    },
+    {
+      "event_id": "db28b97a-eec0-43bf-840e-3b95dc492062",
+      "event": "task/progress",
+      "at": "2026-11-20T13:19:48.274370Z",
+      "actor": "human/Francesco Pham",
+      "task_id": "072b0ff6-9771-4534-9a60-54ddf75d0741",
+      "text": "Check whitespace passed"
+    },
+    {
+      "event_id": "cb7cb0c5-21bf-4b01-8cc8-43c97029832d",
+      "event": "check/passed",
+      "at": "2026-11-20T13:19:48.283354Z",
+      "actor": "human/Francesco Pham",
+      "commit": "0e0014cac3ea39ab544bc3c5cdc11c1e592afced",
+      "checks": "whitespace passed"
+    },
+    {
+      "event_id": "0561cb86-3006-4257-b3f2-9d486e184afd",
+      "event": "ticket/note",
+      "at": "2026-11-20T13:19:55.223996Z",
+      "actor": "human/Francesco Pham",
+      "text": "Review round 1 fixes: dhcpcd fixture no longer contains the access point lines, so the rpi_ctrl.sh accepted-password control skips the GNU-only 'sed -i EXPR FILE' (macOS/BSD sed portability). v1 control call log is now cp, cp, cat, sleep, systemctl, sleep, reboot. AGENTS.md wording now matches the module docstring. Re-verified: against master's unfixed scripts the test still fails 4 subtests (7/64 x both scripts); against the fixed scripts 3 tests pass. flow check --command 'make -C indigo_test test-rpi-ctrl-wifi-client' and --check whitespace passed on tree 86d41dd2. Full unit check still blocked by missing libusb-1.0/avahi-client dev packages on this host.",
+      "tokens": null
+    },
+    {
+      "event_id": "f0d50b7d-966c-4826-89f8-6ac22874a1ea",
+      "event": "task/progress",
+      "at": "2026-11-20T13:20:17.776304Z",
+      "actor": "human/Francesco Pham",
+      "task_id": "072b0ff6-9771-4534-9a60-54ddf75d0741",
+      "text": "Round 2 re-review: fixture and AGENTS.md changes",
+      "attempt_id": "3c9af80e-e202-495c-bbc2-bba3a82dfb07",
+      "worker": {
+        "provider": "anthropic",
+        "model": "claude-opus-5-5",
+        "reasoning": "high"
+      }
+    },
+    {
+      "event_id": "22484232-3c80-4e95-a66b-4cd0d7c28a8c",
+      "event": "task/progress",
+      "at": "2026-11-20T13:20:24.831576Z",
+      "actor": "human/Francesco Pham",
+      "task_id": "072b0ff6-9771-4534-9a60-54ddf75d0741",
+      "text": "Running narrow test: make -C indigo_test test-rpi-ctrl-wifi-client"
+    },
+    {
+      "event_id": "27aaa89e-b559-48c9-a154-b5f0313d1e38",
+      "event": "task/progress",
+      "at": "2026-11-20T13:20:33.086777Z",
+      "actor": "human/Francesco Pham",
+      "task_id": "60ac24d5-9d6d-4aea-8eda-91a8848b3749",
+      "text": "Review finished: passed"
+    },
+    {
+      "event_id": "50bf68f5-e464-4106-9aa1-f61a1dc82db2",
+      "event": "review/passed",
+      "at": "2026-11-20T13:20:33.087474Z",
+      "actor": "human/Francesco Pham",
+      "task_id": "60ac24d5-9d6d-4aea-8eda-91a8848b3749",
+      "kind": "code",
+      "verdict": "pass",
+      "commit": "0e0014cac3ea39ab544bc3c5cdc11c1e592afced"
+    },
+    {
+      "event_id": "555a940f-7e04-4df6-84e8-101373ed1981",
+      "event": "sub_ticket/merged",
+      "at": "2026-11-20T14:08:29.109651Z",
+      "actor": "human/Francesco Pham",
+      "sub_ticket_id": "656ea713-cb71-47ba-8636-9c52fefcc21d",
+      "commit": "b68c90a1617c043bf313e486c5433c5146459938"
+    },
+    {
+      "event_id": "c177ffd3-132f-4259-9ba0-25d0f7da2b52",
+      "event": "task/progress",
+      "at": "2026-11-20T14:08:50.198965Z",
+      "actor": "human/Francesco Pham",
+      "task_id": null,
+      "text": "Check whitespace started"
+    },
+    {
+      "event_id": "f6b5c154-0339-47e6-b9e3-12a54fc4a34f",
+      "event": "task/progress",
+      "at": "2026-11-20T14:08:50.245340Z",
+      "actor": "human/Francesco Pham",
+      "task_id": null,
+      "text": "Check whitespace passed"
+    },
+    {
+      "event_id": "1e0074e3-5fb1-4277-bbf5-c812bb0025b9",
+      "event": "task/progress",
+      "at": "2026-11-20T14:08:50.256254Z",
+      "actor": "human/Francesco Pham",
+      "task_id": null,
+      "text": "Check unit started"
+    },
+    {
+      "event_id": "7451c15e-af70-4054-a0fb-aa6342651fb5",
+      "event": "task/progress",
+      "at": "2026-11-20T14:08:54.061718Z",
+      "actor": "human/Francesco Pham",
+      "task_id": "60ac24d5-9d6d-4aea-8eda-91a8848b3749",
+      "text": "Review started"
+    },
+    {
+      "event_id": "60c798e6-077c-4167-b350-d7f537a363e9",
+      "event": "review/started",
+      "at": "2026-11-20T14:08:54.062482Z",
+      "actor": "human/Francesco Pham",
+      "kind": "code"
+    },
+    {
+      "event_id": "879c7e2c-c43a-423a-bf9b-8690aaebff13",
+      "event": "task/progress",
+      "at": "2026-11-20T14:08:58.277201Z",
+      "actor": "human/Francesco Pham",
+      "task_id": "60ac24d5-9d6d-4aea-8eda-91a8848b3749",
+      "text": "Reviewing combined diff master...HEAD after sub-ticket 656ea713 merge",
+      "attempt_id": "f28b61d2-584d-47a2-838c-c4fd9a35ddf7",
+      "worker": {
+        "provider": "anthropic",
+        "model": "claude-opus-5-5",
+        "reasoning": "high"
+      }
+    },
+    {
+      "event_id": "770f75df-8149-4abb-92e5-6c58d746fce2",
+      "event": "task/progress",
+      "at": "2026-11-20T14:09:50.455258Z",
+      "actor": "human/Francesco Pham",
+      "task_id": "60ac24d5-9d6d-4aea-8eda-91a8848b3749",
+      "text": "Running make test-rpi-ctrl-wifi-client and test-rpi-ctrl-v2 in the workspace"
+    },
+    {
+      "event_id": "27be976a-45e4-4cbc-9ef6-7e86f8ff395c",
+      "event": "task/progress",
+      "at": "2026-11-20T14:10:13.062057Z",
+      "actor": "human/Francesco Pham",
+      "task_id": "60ac24d5-9d6d-4aea-8eda-91a8848b3749",
+      "text": "Review finished: passed"
+    },
+    {
+      "event_id": "7bffc740-8728-4eb8-9d0c-b773c4bcffbe",
+      "event": "review/passed",
+      "at": "2026-11-20T14:10:13.062782Z",
+      "actor": "human/Francesco Pham",
+      "task_id": "60ac24d5-9d6d-4aea-8eda-91a8848b3749",
+      "kind": "code",
+      "verdict": "pass",
+      "commit": "b68c90a1617c043bf313e486c5433c5146459938"
+    },
+    {
+      "event_id": "7919644a-746f-433a-ba9b-06e5f2342c41",
+      "event": "task/progress",
+      "at": "2026-11-20T14:11:03.227394Z",
+      "actor": "human/Francesco Pham",
+      "task_id": null,
+      "text": "Check unit passed: 13 tests"
+    },
+    {
+      "event_id": "8547e2c2-6126-47e5-823a-c4d0e004ebd3",
+      "event": "check/passed",
+      "at": "2026-11-20T14:11:03.242933Z",
+      "actor": "human/Francesco Pham",
+      "commit": "b68c90a1617c043bf313e486c5433c5146459938",
+      "checks": "whitespace passed, unit passed"
+    },
+    {
+      "event_id": "9c200315-ea3b-440c-b477-a13291c9c506",
+      "event": "ticket/closed",
+      "at": "2026-11-20T14:11:13.761912Z",
+      "actor": "human/Francesco Pham",
+      "reason": "Checks and review passed.",
+      "resolution": "resolved"
+    }
+  ],
+  "closure": {
+    "actor": "human/Francesco Pham",
+    "at": "2026-11-20T14:11:13.761879Z",
+    "reason": "Checks and review passed.",
+    "resolution": "resolved",
+    "mode": "flow",
+    "verification": "checks_and_review",
+    "change_commit": "f0fdc50c3e7b9b0697706e5e19b59af80af73b50"
+  },
+  "severity": "high",
+  "metrics": {
+    "duration_ms": 681886.67,
+    "duration_basis": "sum_of_completed_attempt_wall_times",
+    "running_attempts": 0,
+    "unknown_duration_attempts": 0,
+    "tokens": {
+      "input": null,
+      "known_input": null,
+      "output": null,
+      "known_output": null,
+      "total": null,
+      "known_total": null,
+      "complete": false,
+      "measured_attempts": 0,
+      "total_attempts": 5
+    }
+  },
+  "journal": {
+    "entries": 61,
+    "sha256": "9a282e5689cc12183374d6fb5ec1419035d8239d2ab19814e4de96a6e49acfb1"
+  },
+  "priority": "medium",
+  "difficulty": "low",
+  "flow": {
+    "profile": null,
+    "base": "master",
+    "checks": [
+      {
+        "name": "whitespace",
+        "command": "git diff --check master...HEAD",
+        "commit": "427c38baa083a8a159f3a03982aebae91d6d50b1",
+        "tree": "e0ddb360d5e0c0a96cf37af1e06d14157bcb7c93",
+        "exit_code": 0,
+        "counts": null,
+        "passed": true,
+        "at": "2026-11-20T13:14:41.005110Z",
+        "duration_s": 0.0,
+        "log": "/tmp/factory-flow/ea48a942-7a0f-5a3f-b96d-41c06fd4ef0d/e0ddb360d5e0-whitespace.log",
+        "selected": [
+          "whitespace",
+          "unit"
+        ]
+      },
+      {
+        "name": "unit",
+        "command": "make Makefile.inc && make init && make -j8 -C indigo_libs all && make -j8 -C indigo_drivers/agent_platesolver -f ../../Makefile.drv all && make -j8 -C indigo_drivers/agent_scheduler -f ../../Makefile.drv all && make -j8 -C indigo_drivers/system_alpaca -f ../../Makefile.drv all && make -C indigo_test test-unit",
+        "commit": "427c38baa083a8a159f3a03982aebae91d6d50b1",
+        "tree": "e0ddb360d5e0c0a96cf37af1e06d14157bcb7c93",
+        "exit_code": 2,
+        "counts": null,
+        "passed": false,
+        "at": "2026-11-20T13:15:22.118076Z",
+        "duration_s": 41.1,
+        "log": "/tmp/factory-flow/ea48a942-7a0f-5a3f-b96d-41c06fd4ef0d/e0ddb360d5e0-unit.log",
+        "selected": [
+          "whitespace",
+          "unit"
+        ]
+      },
+      {
+        "name": "command-1",
+        "command": "make -C indigo_test test-rpi-ctrl-wifi-client",
+        "commit": "427c38baa083a8a159f3a03982aebae91d6d50b1",
+        "tree": "e0ddb360d5e0c0a96cf37af1e06d14157bcb7c93",
+        "exit_code": 0,
+        "counts": {
+          "executed": 3,
+          "failed": 0,
+          "skipped": 0
+        },
+        "passed": true,
+        "at": "2026-11-20T13:16:18.377851Z",
+        "duration_s": 0.4,
+        "log": "/tmp/factory-flow/ea48a942-7a0f-5a3f-b96d-41c06fd4ef0d/e0ddb360d5e0-command-1.log"
+      },
+      {
+        "name": "command-1",
+        "command": "make -C indigo_test test-rpi-ctrl-wifi-client",
+        "commit": "0e0014cac3ea39ab544bc3c5cdc11c1e592afced",
+        "tree": "86d41dd2f192def9e7638631af6dd5f3cca0e162",
+        "exit_code": 0,
+        "counts": {
+          "executed": 3,
+          "failed": 0,
+          "skipped": 0
+        },
+        "passed": true,
+        "at": "2026-11-20T13:19:48.058709Z",
+        "duration_s": 0.3,
+        "log": "/tmp/factory-flow/ea48a942-7a0f-5a3f-b96d-41c06fd4ef0d/86d41dd2f192-command-1.log"
+      },
+      {
+        "name": "whitespace",
+        "command": "git diff --check master...HEAD",
+        "commit": "0e0014cac3ea39ab544bc3c5cdc11c1e592afced",
+        "tree": "86d41dd2f192def9e7638631af6dd5f3cca0e162",
+        "exit_code": 0,
+        "counts": null,
+        "passed": true,
+        "at": "2026-11-20T13:19:48.273423Z",
+        "duration_s": 0.0,
+        "log": "/tmp/factory-flow/ea48a942-7a0f-5a3f-b96d-41c06fd4ef0d/86d41dd2f192-whitespace.log",
+        "selected": [
+          "whitespace",
+          "unit"
+        ]
+      },
+      {
+        "name": "whitespace",
+        "command": "git diff --check master...HEAD",
+        "commit": "b68c90a1617c043bf313e486c5433c5146459938",
+        "tree": "0cdad9c351e6489c6de8152f8c280530582080d1",
+        "exit_code": 0,
+        "counts": null,
+        "passed": true,
+        "at": "2026-11-20T14:08:50.244098Z",
+        "duration_s": 0.0,
+        "log": "/tmp/factory-flow/ea48a942-7a0f-5a3f-b96d-41c06fd4ef0d/0cdad9c351e6-whitespace.log",
+        "selected": [
+          "whitespace",
+          "unit"
+        ]
+      },
+      {
+        "name": "unit",
+        "command": "make Makefile.inc && make init && make -j8 -C indigo_libs all && make -j8 -C indigo_drivers/agent_platesolver -f ../../Makefile.drv all && make -j8 -C indigo_drivers/agent_scheduler -f ../../Makefile.drv all && make -j8 -C indigo_drivers/system_alpaca -f ../../Makefile.drv all && make -C indigo_test test-unit",
+        "commit": "b68c90a1617c043bf313e486c5433c5146459938",
+        "tree": "0cdad9c351e6489c6de8152f8c280530582080d1",
+        "exit_code": 0,
+        "counts": {
+          "executed": 13,
+          "failed": 0,
+          "skipped": 0
+        },
+        "passed": true,
+        "at": "2026-11-20T14:11:03.226082Z",
+        "duration_s": 133.0,
+        "log": "/tmp/factory-flow/ea48a942-7a0f-5a3f-b96d-41c06fd4ef0d/0cdad9c351e6-unit.log",
+        "selected": [
+          "whitespace",
+          "unit"
+        ]
+      }
+    ],
+    "reviews": [
+      {
+        "kind": "code",
+        "verdict": "changes",
+        "notes": "Script fix is correct and minimal: tools/rpi_ctrl.sh:449-450 and tools/rpi_ctrl_v2.sh:450-451 now call __ALERT (echo + exit 1) before any backup/write/nmcli step, matching the neighbouring guards. The test reproduces the defect: on the old lines the bare string is executed as a command (status 127) and the scripts continue, so the length 7/64 assertions on stdout, empty call log and unchanged config fail; on the new tree make -C indigo_test test-rpi-ctrl-wifi-client passes (3 tests, GNU sed 4.9). Sandbox safety checked: every *_EXE comes from 'which' on a PATH of stubs plus symlinked grep/head/tr/which; sleep/systemctl/reboot/nmcli/raspi-config are stubs; all CONF_*/PROC_FORWARD assignments are rewritten (exactly-one-match check plus a /etc|/proc guard); *.orig files are pre-created so __create_reset_files copies nothing; the scripts have no absolute-path command calls on these paths. Wiring OK: test-unit depends on the new phony target (indigo_test/Makefile:377-382), the AGENTS.md list documents it, and the pbxproj adds the file to the indigo_test/unit group with a unique ID. Header matches indigo_test/AGENTS.md. git diff --check clean. DEFECT (must fix): the rpi_ctrl.sh positive control is not portable to macOS, where indigo_test (and so test-unit/test) is supported (Makefile has Darwin branches). The dhcpcd fixture (test_rpi_ctrl_wifi_client.py:62) contains the hotspot lines, so the accepted-password path runs the host's real sed via LOGGED_REAL (line 51) as 'sed -i \"s/...//\" file' (tools/rpi_ctrl.sh:472/475/478). BSD sed takes the expression as the -i backup suffix and the file path as the script, fails, and the script prints 'ALERT: cannot remove ...', so the subtests at lines 170-179 (rpi_ctrl.sh, lengths 8 and 63) fail and make -C indigo_test test-unit breaks on macOS [verify: not run on macOS; based on documented BSD sed -i semantics]. Suggested fix: keep sed out of the accepted path for this control, for example use a dhcpcd fixture without the three hotspot lines (the control still proves the guard lets 8/63 through: psk written, systemctl disable hostapd, reboot), or provide a GNU sed when one is found (gsed) and otherwise fail with a clear message rather than silently skipping. Nit (optional): AGENTS.md line 65 says the PATH holds argv-logging stubs only; it also holds real grep/head/tr/which and logged real cat/cp/sed, as the module docstring states.",
+        "reviewer": "human/Francesco Pham",
+        "commit": "427c38baa083a8a159f3a03982aebae91d6d50b1",
+        "tree": "e0ddb360d5e0c0a96cf37af1e06d14157bcb7c93",
+        "at": "2026-11-20T13:18:48.333892Z"
+      },
+      {
+        "kind": "code",
+        "verdict": "pass",
+        "notes": "Round 2: both findings resolved. The dhcpcd fixture (indigo_test/unit/test_rpi_ctrl_wifi_client.py:62-64) no longer has the access point lines, so the grep -Eq at tools/rpi_ctrl.sh:471 does not match and the GNU-only sed -i edits (472/475/478) are skipped; no other sed call is on the tested path, so the accepted-password runs are portable to BSD sed. The control still proves lengths 8 and 63 pass the guard: stdout OK, psk written to wpa_supplicant.conf, systemctl disable hostapd and reboot logged (v1); nmcli dev wifi connect with the password, exit 0 (v2). The rejection cases are unchanged and still fail on the unfixed scripts (the old code runs the logged cp backups and rewrites wpa_supplicant.conf / issues nmcli calls before reaching OK). indigo_test/AGENTS.md:65 now lists the PATH contents accurately. Script fix, sandbox safety, Makefile and Xcode wiring unchanged from round 1 and still correct. make -C indigo_test test-rpi-ctrl-wifi-client: 3 tests OK on this tree; git diff --check master...HEAD clean. Not run on macOS. The unit check's libindigo build failure is the known environment limitation, not a finding.",
+        "reviewer": "human/Francesco Pham",
+        "commit": "0e0014cac3ea39ab544bc3c5cdc11c1e592afced",
+        "tree": "86d41dd2f192def9e7638631af6dd5f3cca0e162",
+        "at": "2026-11-20T13:20:33.086657Z"
+      },
+      {
+        "kind": "code",
+        "verdict": "pass",
+        "notes": "Combined tree review (master...HEAD incl. merged sub-ticket 656ea713, b68c90a16). rpi_ctrl.sh:449-450 and rpi_ctrl_v2.sh:452-453 now use __ALERT so lengths 7/64 exit before any mutation; v2 empty password skips the length checks and joins with 'nmcli dev wifi connect SSID' (rpi_ctrl_v2.sh:450-463). v2 channel readback (317), psk-only-required-with-key-mgmt readback (376, 491), indigo3 install via apt-cache show (555-557) and unknown-argument ${1} (669) are correct. Test files agree with the final v2 script: test_rpi_ctrl_wifi_client.py checks v2 7/64 rejected and 8/63 accepted, which the open-network change preserves; test_rpi_ctrl_v2.py adds the empty-password open join and repeats 1/7/64 and 8/63. Makefile wires both PHONY targets into test-unit (indigo_test/Makefile:377-387); test target reaches them once via test-unit. Xcode: both PBXFileReference IDs unique, listed once in the unit group (path = unit). AGENTS.md lines match both modules. Safety: bash by absolute path, PATH = stubs + symlinked grep/head/tr/which (+ logging wrappers of real cat/cp/sed in the v1 test only, on redirected files); both sandboxes refuse a copy that still names /etc or /proc; scripts contain no hard-coded absolute command paths (only a read of /sys/class/net/eth0/carrier in reset paths not exercised). Ran make -C indigo_test test-rpi-ctrl-wifi-client (3 OK) and test-rpi-ctrl-v2 (10 OK, no skips on this host with GNU grep). Non-blocking notes: v2 password-length cases are duplicated across the two test files; v1 still rejects an empty client password while v2 accepts it (intentional, v2-only scope); the PCRE-dependent v2 cases skip on BSD grep (documented).",
+        "reviewer": "human/Francesco Pham",
+        "commit": "b68c90a1617c043bf313e486c5433c5146459938",
+        "tree": "0cdad9c351e6489c6de8152f8c280530582080d1",
+        "at": "2026-11-20T14:10:13.061964Z"
+      }
+    ],
+    "approvals": [],
+    "notes": [
+      {
+        "at": "2026-11-20T13:14:01.644731Z",
+        "actor": "human/Francesco Pham",
+        "text": "Reproduction (before fix): new indigo_test/unit/test_rpi_ctrl_wifi_client.py runs each script copy with config paths redirected to a temp dir and PATH limited to argv-logging stubs plus which/grep/head/tr (non-root, no host network/service command reachable). Password length 7 and 64: both scripts print 'OK' instead of 'ALERT: WIFI_CN_PW length < 8/> 63', stderr shows 'WIFI_CN_PW length < 8: command not found' (rpi_ctrl.sh:449-450, rpi_ctrl_v2.sh:450-451). Length 7 call logs: v1 cp wpa_supplicant/dhcpcd backups, cat > wpa_supplicant.conf, 3x sed -i dhcpcd.conf, systemctl disable hostapd, reboot (exit 1 from last option test); v2 nmcli con down/delete indigo-wifi, dev wifi connect, con modify, con up, exit 0. Result: 4 failing subtests (both scripts x 7/64); controls 8/63 pass.",
+        "tokens": null
+      },
+      {
+        "at": "2026-11-20T13:16:24.980960Z",
+        "actor": "human/Francesco Pham",
+        "text": "After fix (both scripts use __ALERT for the WIFI_CN_PW length checks): same test passes, 3 tests / 6 subtests OK. Lengths 7 and 64 print 'ALERT: WIFI_CN_PW length < 8' / '> 63', exit 1, empty stub call log, config files unchanged, no 'command not found'; lengths 8 and 63 still proceed (v1 writes psk, systemctl disable hostapd, reboot; v2 nmcli dev wifi connect, exit 0). flow check --command 'make -C indigo_test test-rpi-ctrl-wifi-client' passed on tree e0ddb360. Plain flow check: whitespace passed; unit FAILED for an environment reason unrelated to the change: this host lacks libusb-1.0 and avahi-client development files (ld: cannot find -lusb-1.0; avahi-client/client.h missing; libjpeg/libtiff/hidapi configure 'C compiler cannot create executables' for the same -lusb-1.0 link), so libindigo does not build and test-unit cannot start. Installing packages needs root and was not done.",
+        "tokens": null
+      },
+      {
+        "at": "2026-11-20T13:19:55.223389Z",
+        "actor": "human/Francesco Pham",
+        "text": "Review round 1 fixes: dhcpcd fixture no longer contains the access point lines, so the rpi_ctrl.sh accepted-password control skips the GNU-only 'sed -i EXPR FILE' (macOS/BSD sed portability). v1 control call log is now cp, cp, cat, sleep, systemctl, sleep, reboot. AGENTS.md wording now matches the module docstring. Re-verified: against master's unfixed scripts the test still fails 4 subtests (7/64 x both scripts); against the fixed scripts 3 tests pass. flow check --command 'make -C indigo_test test-rpi-ctrl-wifi-client' and --check whitespace passed on tree 86d41dd2. Full unit check still blocked by missing libusb-1.0/avahi-client dev packages on this host.",
+        "tokens": null
+      }
+    ],
+    "questions": [],
+    "presented": [],
+    "sub_ticket_merged_at": "2026-11-20T14:08:29.109006Z",
+    "landing": {
+      "commit": "f0fdc50c3e7b9b0697706e5e19b59af80af73b50",
+      "tree": "0cdad9c351e6489c6de8152f8c280530582080d1",
+      "base": "master",
+      "at": "2026-11-20T14:11:13.691499Z"
+    }
+  }
+}

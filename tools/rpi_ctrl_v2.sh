@@ -152,7 +152,7 @@ __usage() {
 	 "\t--get-wifi-country-code\n" \
 	 "\t--set-wifi-country-code <code> (two letter country code like US, BG etc. NOTE: This will reset the WiFi to defaults)\n" \
 	 "\t--get-wifi-server\n" \
-	 "\t--set-wifi-server <ssid> <password>\n" \
+	 "\t--set-wifi-server <ssid> <password>   (empty values keep the saved hotspot SSID and password)\n" \
 	 "\t--get-wifi-channel\n" \
 	 "\t--set-wifi-channel <channel> (0 = automatically select in 2.4GHz band, available channels dpend on country regulations)\n" \
 	 "\t--get-wifi-client\n" \
@@ -462,6 +462,13 @@ __set-wifi-server-silent() {
 }
 
 __set-wifi-server() {
+    # An empty SSID or password keeps the saved hotspot setting, so a client can
+    # switch back to the hotspot without knowing its password.
+    __migrate
+    if __con_exists ${AP_CON}; then
+        [[ -z ${WIFI_AP_SSID} ]] && WIFI_AP_SSID=$(__nm_get 802-11-wireless.ssid ${AP_CON})
+        [[ -z ${WIFI_AP_PW} ]] && WIFI_AP_PW=$(__nm_get 802-11-wireless-security.psk ${AP_CON})
+    fi
     __set-wifi-server-silent
     __OK
 }

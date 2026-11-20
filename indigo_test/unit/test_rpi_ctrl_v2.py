@@ -351,6 +351,21 @@ class RpiCtrlV2Test(unittest.TestCase):
 		self.assertIn(["nmcli", "con", "modify", "indigo-wifi", "connection.id", "indigo-ap"], sandbox.calls("nmcli"))
 		self.assertFalse([call for call in sandbox.calls("nmcli") if call[1:3] == ["con", "add"]])
 
+	def test_set_wifi_server_with_empty_values_keeps_saved_hotspot(self):
+		# indigo_server never shows the hotspot password, so "back to hotspot" sends it empty.
+		sandbox = self.sandbox([ap_profile(), client_profile(HOME_PROFILE, "Home", "home-password")], HOME_PROFILE)
+		self.assert_result(sandbox.run("--set-wifi-server", "", ""), "OK\n", 0)
+		self.assertEqual(sandbox.active(), "indigo-ap")
+		modify = [call for call in sandbox.mutations() if call[2] == "modify"]
+		self.assertEqual(len(modify), 1, modify)
+		self.assertEqual(modify[0][modify[0].index("802-11-wireless.ssid") + 1], "astro")
+		self.assertEqual(modify[0][modify[0].index("802-11-wireless-security.psk") + 1], "astro-password")
+
+	def test_set_wifi_server_with_empty_password_and_no_hotspot_alerts(self):
+		sandbox = self.sandbox([client_profile(HOME_PROFILE, "Home", "home-password")], HOME_PROFILE)
+		self.assert_result(sandbox.run("--set-wifi-server", "astro", ""), "ALERT: WIFI_AP_PW not set\n", 1)
+		self.assertEqual(sandbox.active(), HOME_PROFILE)
+
 	# --set-wifi-client: validates, replies at once, switches detached
 
 	def test_set_wifi_client_rejects_invalid_password_length(self):

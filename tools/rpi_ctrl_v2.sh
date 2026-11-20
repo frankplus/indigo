@@ -156,7 +156,7 @@ __usage() {
 	 "\t--get-wifi-channel\n" \
 	 "\t--set-wifi-channel <channel> (0 = automatically select in 2.4GHz band, available channels dpend on country regulations)\n" \
 	 "\t--get-wifi-client\n" \
-	 "\t--set-wifi-client <ssid> <password> (empty password for an open network; replies at once and switches in the background)\n" \
+	 "\t--set-wifi-client <ssid> <password> (empty password: the saved one of a known network, otherwise an open network; replies at once and switches in the background)\n" \
 	 "\t--reset-wifi-server\n" \
 	 "\t--list-available-versions\n" \
 	 "\t--install-version <package-version>\n" \
@@ -612,10 +612,10 @@ __switch-wifi-client() {
         old_psk=$(__nm_get 802-11-wireless-security.psk "${con}")
     fi
 
+    # An empty password keeps the saved security of a known network; a new
+    # profile without a password is an open network.
     if [[ -n ${pw} ]]; then
         ${NM_CLI} con modify "${con}" 802-11-wireless-security.key-mgmt wpa-psk 802-11-wireless-security.psk "${pw}" >/dev/null 2>&1
-    elif [[ -n ${old_mgmt} ]]; then
-        ${NM_CLI} con modify "${con}" remove 802-11-wireless-security >/dev/null 2>&1
     fi
     ${NM_CLI} con modify "${con}" connection.autoconnect yes connection.autoconnect-priority ${CLIENT_PRIORITY} >/dev/null 2>&1
 
@@ -630,7 +630,7 @@ __switch-wifi-client() {
     # Failed: undo the profile change, then restore connectivity.
     if [[ ${created} -eq 1 ]]; then
         ${NM_CLI} con delete "${con}" >/dev/null 2>&1
-    elif [[ -n ${old_mgmt} ]]; then
+    elif [[ -n ${pw} && -n ${old_mgmt} ]]; then
         ${NM_CLI} con modify "${con}" 802-11-wireless-security.key-mgmt "${old_mgmt}" 802-11-wireless-security.psk "${old_psk}" >/dev/null 2>&1
     elif [[ -n ${pw} ]]; then
         ${NM_CLI} con modify "${con}" remove 802-11-wireless-security >/dev/null 2>&1

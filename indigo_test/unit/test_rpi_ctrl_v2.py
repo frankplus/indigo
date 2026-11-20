@@ -417,12 +417,19 @@ class RpiCtrlV2Test(unittest.TestCase):
 		self.assertEqual(sandbox.profiles(), sorted([HOME_PROFILE, "indigo-ap"]))
 		self.assertIn(["nmcli", "con", "modify", HOME_PROFILE, "802-11-wireless-security.key-mgmt", "wpa-psk", "802-11-wireless-security.psk", "new-password"], sandbox.calls("nmcli"))
 
-	def test_switch_to_open_network_removes_security(self):
-		sandbox = self.sandbox([ap_profile(), client_profile("cafe", "Cafe", "old-password")], "indigo-ap")
-		self.assert_result(self.switch(sandbox, "", "Cafe"), "OK\n", 0)
+	def test_switch_with_empty_password_keeps_saved_password(self):
+		# indigo_server sends an empty password when the client leaves the field empty.
+		sandbox = self.sandbox([ap_profile(), client_profile(HOME_PROFILE, "Home", "home-password")], "indigo-ap")
+		self.assert_result(self.switch(sandbox, "", "Home"), "OK\n", 0)
+		self.assertEqual(sandbox.active(), HOME_PROFILE)
 		calls = sandbox.calls("nmcli")
-		self.assertIn(["nmcli", "con", "modify", "cafe", "remove", "802-11-wireless-security"], calls)
-		self.assertFalse([call for call in calls if "802-11-wireless-security.psk" in call])
+		self.assertFalse([call for call in calls if any(arg.startswith("802-11-wireless-security") for arg in call) or "remove" in call], calls)
+
+	def test_switch_to_new_open_network(self):
+		sandbox = self.sandbox([ap_profile()], "indigo-ap")
+		self.assert_result(self.switch(sandbox, "", "Cafe"), "OK\n", 0)
+		self.assertEqual(sandbox.active(), "indigo-Cafe")
+		self.assertFalse([call for call in sandbox.calls("nmcli") if any(arg.startswith("802-11-wireless-security") for arg in call)])
 
 	def test_failed_switch_returns_to_previous_client_network(self):
 		sandbox = self.sandbox([ap_profile(), client_profile(HOME_PROFILE, "Home", "home-password")], HOME_PROFILE)

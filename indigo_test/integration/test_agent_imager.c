@@ -29,6 +29,8 @@
 #include <indigo/indigo_filter.h>
 #include <indigo_drivers/agent_imager/indigo_agent_imager.h>
 #include <indigo_drivers/ccd_simulator/indigo_ccd_simulator.h>
+#include <indigo_drivers/ccd_simulator/indigo_ccd_simulator_data.h>
+#include <indigo/indigo_bahtinov.h>
 #include "../test_runner.h"
 
 #define AGENT "Imager Agent"
@@ -36,6 +38,7 @@
 #define FOCUSER "CCD Imager Simulator (focuser)"
 #define WHEEL "CCD Imager Simulator (wheel)"
 #define BAHTINOV "CCD Bahtinov Mask Simulator"
+#define FILE_CAMERA "CCD File Simulator"
 #define ARRAY_SIZE(a) (sizeof(a) / sizeof((a)[0]))
 #define REQUIRE(c) do { if (!(c)) { fprintf(stderr, "%s:%d: %s\n", __FILE__, __LINE__, #c); indigo_test_failures++; return false; } } while (0)
 
@@ -440,7 +443,7 @@ static void cleanup(void) {
 		}
 	}
 	if (simulator_started) {
-		const char *names[] = { CAMERA, FOCUSER, WHEEL, BAHTINOV };
+		const char *names[] = { CAMERA, FOCUSER, WHEEL, BAHTINOV, FILE_CAMERA };
 		for (int i = 0; i < ARRAY_SIZE(names); i++) {
 			if (value(names[i], "CONNECTION", "CONNECTED") == 1) {
 				sw(names[i], "CONNECTION", "DISCONNECTED", true, INDIGO_OK_STATE);
@@ -1035,6 +1038,67 @@ static void bahtinov_configured_mask_angle(void) {
 	ASSERT_TRUE(fabs(delta3 - 20.1) < 0.6);
 }
 
+// The Bahtinov simulator frame (defocused by PATTERN_FOCUS steps) pasted into a frame larger than the agent analyses whole.
+#define LARGE_FRAME_WIDTH 1200
+#define LARGE_FRAME_HEIGHT 900
+#define PATTERN_LEFT 650
+#define PATTERN_TOP 350
+#define PATTERN_FOCUS 4
+
+static bool write_large_bahtinov_frame(const char *path) {
+	indigo_raw_header header = { INDIGO_RAW_MONO8, LARGE_FRAME_WIDTH, LARGE_FRAME_HEIGHT };
+	const unsigned char *pattern = indigo_ccd_simulator_bahtinov_image[PATTERN_FOCUS];
+	unsigned char *pixels = malloc(LARGE_FRAME_WIDTH * LARGE_FRAME_HEIGHT);
+	REQUIRE(pixels != NULL);
+	memset(pixels, pattern[0], LARGE_FRAME_WIDTH * LARGE_FRAME_HEIGHT);
+	for (int y = 0; y < BAHTINOV_HEIGHT; y++) {
+		memcpy(pixels + (PATTERN_TOP + y) * LARGE_FRAME_WIDTH + PATTERN_LEFT, pattern + y * BAHTINOV_WIDTH, BAHTINOV_WIDTH);
+	}
+	FILE *file = fopen(path, "wb");
+	bool written = file != NULL && fwrite(&header, sizeof(header), 1, file) == 1 && fwrite(pixels, LARGE_FRAME_WIDTH * LARGE_FRAME_HEIGHT, 1, file) == 1;
+	if (file != NULL) {
+		written = fclose(file) == 0 && written;
+	}
+	free(pixels);
+	return written;
+}
+
+static void bahtinov_large_frame_window_around_selected_star(void) {
+	char path[1024];
+	snprintf(path, sizeof(path), "%s/bahtinov.raw", config_folder);
+	ASSERT_TRUE(write_large_bahtinov_frame(path));
+	indigo_bahtinov_result expected;
+	ASSERT_TRUE(indigo_bahtinov_analyze(INDIGO_RAW_MONO8, indigo_ccd_simulator_bahtinov_image[PATTERN_FOCUS], BAHTINOV_WIDTH, BAHTINOV_HEIGHT, NULL, &expected));
+	ASSERT_TRUE(txt(FILE_CAMERA, "FILE_NAME", "PATH", path, INDIGO_OK_STATE));
+	ASSERT_TRUE(sw(AGENT, "FILTER_CCD_LIST", FILE_CAMERA, true, INDIGO_OK_STATE));
+	ASSERT_TRUE(num(AGENT, "AGENT_IMAGER_BATCH", "EXPOSURE", 0.1));
+	ASSERT_TRUE(sw(AGENT, "AGENT_IMAGER_FOCUS_ESTIMATOR", "BAHTINOV", true, INDIGO_OK_STATE));
+	// without a selected star a frame larger than 500 x 500 pixels is not analysed
+	ASSERT_TRUE(run("PREVIEW_1", INDIGO_OK_STATE));
+	ASSERT_TRUE(value(AGENT, "AGENT_IMAGER_STATS", AGENT_IMAGER_STATS_BAHTINOV_ITEM_NAME) == -1);
+	ASSERT_TRUE(value(AGENT, "AGENT_IMAGER_SPIKES", AGENT_IMAGER_SPIKE_1_THETA_ITEM_NAME) == 0);
+	// the window centred at the selected star holds exactly the pasted simulator frame, spikes are in frame coordinates
+	ASSERT_TRUE(num(AGENT, "AGENT_IMAGER_SELECTION", "X", PATTERN_LEFT + BAHTINOV_WIDTH / 2));
+	ASSERT_TRUE(num(AGENT, "AGENT_IMAGER_SELECTION", "Y", PATTERN_TOP + BAHTINOV_HEIGHT / 2));
+	ASSERT_TRUE(run("PREVIEW_1", INDIGO_OK_STATE));
+	double error = value(AGENT, "AGENT_IMAGER_STATS", AGENT_IMAGER_STATS_BAHTINOV_ITEM_NAME);
+	printf("    window error %.3f, expected %.3f\n", error, fabs(expected.error));
+	ASSERT_TRUE(fabs(error - fabs(expected.error)) < 1e-6);
+	const char *rho[] = { AGENT_IMAGER_SPIKE_1_RHO_ITEM_NAME, AGENT_IMAGER_SPIKE_2_RHO_ITEM_NAME, AGENT_IMAGER_SPIKE_3_RHO_ITEM_NAME };
+	const char *theta[] = { AGENT_IMAGER_SPIKE_1_THETA_ITEM_NAME, AGENT_IMAGER_SPIKE_2_THETA_ITEM_NAME, AGENT_IMAGER_SPIKE_3_THETA_ITEM_NAME };
+	for (int i = 0; i < 3; i++) {
+		ASSERT_TRUE(fabs(value(AGENT, "AGENT_IMAGER_SPIKES", theta[i]) - expected.theta[i]) < 1e-9);
+		ASSERT_TRUE(fabs(value(AGENT, "AGENT_IMAGER_SPIKES", rho[i]) - (expected.rho[i] + PATTERN_LEFT * cos(expected.theta[i]) + PATTERN_TOP * sin(expected.theta[i]))) < 1e-6);
+	}
+	// a selection at the frame corner moves the window inside the frame, the star stays in it
+	ASSERT_TRUE(num(AGENT, "AGENT_IMAGER_SELECTION", "X", LARGE_FRAME_WIDTH - 2));
+	ASSERT_TRUE(num(AGENT, "AGENT_IMAGER_SELECTION", "Y", LARGE_FRAME_HEIGHT - 2));
+	ASSERT_TRUE(run("PREVIEW_1", INDIGO_OK_STATE));
+	error = value(AGENT, "AGENT_IMAGER_STATS", AGENT_IMAGER_STATS_BAHTINOV_ITEM_NAME);
+	printf("    corner window error %.3f\n", error);
+	ASSERT_TRUE(fabs(error - fabs(expected.error)) < 0.5);
+}
+
 static void configuration_reload(void) {
 	ASSERT_TRUE(num(AGENT, "AGENT_IMAGER_BATCH", "COUNT", 7));
 	ASSERT_TRUE(num(AGENT, "AGENT_IMAGER_FOCUS", "ITERATIVE_INITIAL", 27));
@@ -1432,6 +1496,7 @@ static const indigo_test_case tests[] = {
 	{ "additional instance removal during publication", additional_instance_removal_during_publication },
 	{ "bahtinov preview and focus", bahtinov_preview_and_focus },
 	{ "bahtinov configured mask angle", bahtinov_configured_mask_angle },
+	{ "bahtinov large frame window around selected star", bahtinov_large_frame_window_around_selected_star },
 	{ "configuration reload", configuration_reload },
 	{ "shutdown while paused", shutdown_while_paused },
 	{ "camera disconnect and recover", camera_disconnect_and_recover },

@@ -710,6 +710,57 @@ bool indigo_bahtinov_analyze(indigo_raw_type raw_type, const void *data, const i
 	return true;
 }
 
+bool indigo_bahtinov_analyze_window(indigo_raw_type raw_type, const void *data, const int width, const int height, const int x, const int y, const int size, const double *mask_angle, indigo_bahtinov_result *result) {
+	memset(result, 0, sizeof(indigo_bahtinov_result));
+	int pixel_size;
+	switch (raw_type) {
+		case INDIGO_RAW_MONO8:
+			pixel_size = 1;
+			break;
+		case INDIGO_RAW_MONO16:
+			pixel_size = 2;
+			break;
+		case INDIGO_RAW_RGB24:
+			pixel_size = 3;
+			break;
+		case INDIGO_RAW_RGBA32:
+		case INDIGO_RAW_ABGR32:
+			pixel_size = 4;
+			break;
+		case INDIGO_RAW_RGB48:
+			pixel_size = 6;
+			break;
+		default:
+			return false;
+	}
+	if (data == NULL || width <= 0 || height <= 0 || size <= 0) {
+		return false;
+	}
+	int window_width = width < size ? width : size;
+	int window_height = height < size ? height : size;
+	int left = x - window_width / 2;
+	int top = y - window_height / 2;
+	left = left < 0 ? 0 : (left > width - window_width ? width - window_width : left);
+	top = top < 0 ? 0 : (top > height - window_height ? height - window_height : top);
+	if (window_width == width && window_height == height) {
+		return indigo_bahtinov_analyze(raw_type, data, width, height, mask_angle, result);
+	}
+	size_t row_size = (size_t)window_width * pixel_size;
+	uint8_t *window = indigo_safe_malloc((size_t)window_height * row_size);
+	for (int i = 0; i < window_height; i++) {
+		memcpy(window + i * row_size, (const uint8_t *)data + ((size_t)(top + i) * width + left) * pixel_size, row_size);
+	}
+	bool found = indigo_bahtinov_analyze(raw_type, window, window_width, window_height, mask_angle, result);
+	indigo_safe_free(window);
+	if (found) {
+		// spikes in frame pixel index coordinates, the focus error does not depend on the window origin
+		for (int i = 0; i < 3; i++) {
+			result->rho[i] += left * cos(result->theta[i]) + top * sin(result->theta[i]);
+		}
+	}
+	return found;
+}
+
 double indigo_bahtinov_error(indigo_raw_type raw_type, const void *data, const int width, const int height, double sigma, double *rho1, double *theta1, double *rho2, double *theta2, double *rho3, double *theta3) {
 	indigo_bahtinov_result result;
 	bool found = indigo_bahtinov_analyze(raw_type, data, width, height, NULL, &result);

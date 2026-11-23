@@ -64,6 +64,13 @@ INDIGO_EXTERN void indigo_skeletonize(uint8_t* data, int width, int height);
  */
 INDIGO_EXTERN bool indigo_bahtinov_analyze(indigo_raw_type raw_type, const void *data, const int width, const int height, const double *mask_angle, indigo_bahtinov_result *result);
 
+/** Analyze a Bahtinov mask pattern in a window of a larger frame, e.g. around a selected star.
+ *  The window of at most size x size pixels is centred at pixel (x, y) and moved inside the frame where needed.
+ *  Spikes in the result are in frame pixel index coordinates, the focus error does not depend on the window position.
+ *  Returns false if no reliable pattern was found in the window.
+ */
+INDIGO_EXTERN bool indigo_bahtinov_analyze_window(indigo_raw_type raw_type, const void *data, const int width, const int height, const int x, const int y, const int size, const double *mask_angle, indigo_bahtinov_result *result);
+
 /** Compatibility wrapper of indigo_bahtinov_analyze() with free angle search, sigma is ignored.
  *  Returns the absolute focus error in pixels or -1 if no reliable pattern was found.
  */

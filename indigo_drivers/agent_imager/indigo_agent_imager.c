@@ -25,7 +25,7 @@
  \file indigo_agent_imager.c
  */
 
-#define DRIVER_VERSION 0x03000047
+#define DRIVER_VERSION 0x03000048
 #define DRIVER_NAME	"indigo_agent_imager"
 
 #include <stdio.h>
@@ -932,17 +932,39 @@ static void restore_subframe(indigo_device *device) {
 	}
 }
 
+static bool bahtinov_star_selected(indigo_device *device) {
+	return AGENT_IMAGER_SELECTION_X_ITEM->number.value != 0 && AGENT_IMAGER_SELECTION_Y_ITEM->number.value != 0;
+}
+
+static void check_bahtinov_frame_size(indigo_device *device) {
+	if (DEVICE_PRIVATE_DATA->use_bahtinov_estimator && (DEVICE_PRIVATE_DATA->frame[2] > MAX_BAHTINOV_FRAME_SIZE || DEVICE_PRIVATE_DATA->frame[3] > MAX_BAHTINOV_FRAME_SIZE) && !bahtinov_star_selected(device)) {
+		indigo_send_message(device, BUSY_PROPERTY, "Bahtinov focus estimator analyses frames larger than %d x %d pixels around the selected star only, select a star", MAX_BAHTINOV_FRAME_SIZE, MAX_BAHTINOV_FRAME_SIZE);
+	}
+}
+
+// Bahtinov pattern in the whole frame or, in frames larger than MAX_BAHTINOV_FRAME_SIZE, in a window around the selected star.
+static bool bahtinov_analyze(indigo_device *device, indigo_raw_header *header, const double *mask_angle, indigo_bahtinov_result *result) {
+	void *data = (char *)header + sizeof(indigo_raw_header);
+	if (header->width <= MAX_BAHTINOV_FRAME_SIZE && header->height <= MAX_BAHTINOV_FRAME_SIZE) {
+		return indigo_bahtinov_analyze(header->signature, data, header->width, header->height, mask_angle, result);
+	}
+	if (!bahtinov_star_selected(device)) {
+		memset(result, 0, sizeof(indigo_bahtinov_result));
+		return false;
+	}
+	return indigo_bahtinov_analyze_window(header->signature, data, header->width, header->height, (int)round(AGENT_IMAGER_SELECTION_X_ITEM->number.value), (int)round(AGENT_IMAGER_SELECTION_Y_ITEM->number.value), MAX_BAHTINOV_FRAME_SIZE, mask_angle, result);
+}
+
 // Bahtinov focus error with the configured mask angle, the learned mask angle or a free angle search. A confident free search
 // result (re)defines the learned angle, so a changed mask is picked up when the learned angle stops matching.
 static double bahtinov_focus_error(indigo_device *device, indigo_raw_header *header) {
-	void *data = (char *)header + sizeof(indigo_raw_header);
 	double configured[2] = { -AGENT_IMAGER_FOCUS_BAHTINOV_ANGLE_ITEM->number.value, AGENT_IMAGER_FOCUS_BAHTINOV_ANGLE_ITEM->number.value };
 	double *learned = DEVICE_PRIVATE_DATA->bahtinov_mask_angle;
 	double *mask_angle = configured[1] > 0 ? configured : (learned[1] > 0 ? learned : NULL);
 	indigo_bahtinov_result result;
-	bool found = mask_angle != NULL && indigo_bahtinov_analyze(header->signature, data, header->width, header->height, mask_angle, &result);
+	bool found = mask_angle != NULL && bahtinov_analyze(device, header, mask_angle, &result);
 	if (!found && configured[1] <= 0) {
-		found = indigo_bahtinov_analyze(header->signature, data, header->width, header->height, NULL, &result);
+		found = bahtinov_analyze(device, header, NULL, &result);
 		if (found && mask_angle != NULL && result.confidence < BAHTINOV_LEARN_CONFIDENCE) {
 			found = false;
 		}
@@ -1041,12 +1063,8 @@ static bool capture_and_process_frame(indigo_device *device, uint8_t **saturatio
 			}
 			indigo_update_property(device, AGENT_IMAGER_SELECTION_PROPERTY, NULL);
 		} else if (DEVICE_PRIVATE_DATA->use_bahtinov_estimator) {
-			if (header->width <= MAX_BAHTINOV_FRAME_SIZE && header->height <= MAX_BAHTINOV_FRAME_SIZE) {
-				AGENT_IMAGER_STATS_FOCUS_POSITION_ITEM->number.value = DEVICE_PRIVATE_DATA->focuser_position;
-				AGENT_IMAGER_STATS_BAHTINOV_ITEM->number.value = bahtinov_focus_error(device, header);
-			} else {
-				AGENT_IMAGER_STATS_BAHTINOV_ITEM->number.value = -1;
-			}
+			AGENT_IMAGER_STATS_FOCUS_POSITION_ITEM->number.value = DEVICE_PRIVATE_DATA->focuser_position;
+			AGENT_IMAGER_STATS_BAHTINOV_ITEM->number.value = bahtinov_focus_error(device, header);
 			indigo_update_property(device, AGENT_IMAGER_SPIKES_PROPERTY, NULL);
 		}
 	}
@@ -3155,14 +3173,10 @@ static indigo_result agent_change_property(indigo_device *device, indigo_client 
 				indigo_set_timer(device, 0, clear_selection_process, NULL);
 			} else if (INDIGO_FILTER_CCD_SELECTED) {
 				if (AGENT_IMAGER_START_PREVIEW_1_ITEM->sw.value) {
-					if (DEVICE_PRIVATE_DATA->use_bahtinov_estimator && (DEVICE_PRIVATE_DATA->frame[2] > MAX_BAHTINOV_FRAME_SIZE || DEVICE_PRIVATE_DATA->frame[3] > MAX_BAHTINOV_FRAME_SIZE)) {
-						indigo_send_message(device, BUSY_PROPERTY, "Bahtinov focus estimator can't process frames larger than %d x %d pixels", MAX_BAHTINOV_FRAME_SIZE, MAX_BAHTINOV_FRAME_SIZE);
-					}
+					check_bahtinov_frame_size(device);
 					indigo_set_timer(device, 0, preview_1_process, NULL);
 				} else if (AGENT_IMAGER_START_PREVIEW_ITEM->sw.value) {
-					if (DEVICE_PRIVATE_DATA->use_bahtinov_estimator && (DEVICE_PRIVATE_DATA->frame[2] > MAX_BAHTINOV_FRAME_SIZE || DEVICE_PRIVATE_DATA->frame[3] > MAX_BAHTINOV_FRAME_SIZE)) {
-						indigo_send_message(device, BUSY_PROPERTY, "Bahtinov focus estimator can't process frames larger than %d x %d pixels", MAX_BAHTINOV_FRAME_SIZE, MAX_BAHTINOV_FRAME_SIZE);
-					}
+					check_bahtinov_frame_size(device);
 					indigo_set_timer(device, 0, preview_process, NULL);
 				} else if (AGENT_IMAGER_START_EXPOSURE_ITEM->sw.value && !AGENT_IMAGER_MACRO_MODE_FEATURE_ITEM->sw.value) {
 					indigo_set_timer(device, 0, exposure_batch_process, NULL);
@@ -3170,9 +3184,7 @@ static indigo_result agent_change_property(indigo_device *device, indigo_client 
 					indigo_set_timer(device, 0, streaming_batch_process, NULL);
 				} else if (INDIGO_FILTER_FOCUSER_SELECTED) {
 					if (AGENT_IMAGER_START_FOCUSING_ITEM->sw.value) {
-						if (DEVICE_PRIVATE_DATA->use_bahtinov_estimator && (DEVICE_PRIVATE_DATA->frame[2] > MAX_BAHTINOV_FRAME_SIZE || DEVICE_PRIVATE_DATA->frame[3] > MAX_BAHTINOV_FRAME_SIZE)) {
-							indigo_send_message(device, BUSY_PROPERTY, "Bahtinov focus estimator can't process frames larger than %d x %d pixels", MAX_BAHTINOV_FRAME_SIZE, MAX_BAHTINOV_FRAME_SIZE);
-						}
+						check_bahtinov_frame_size(device);
 						indigo_set_timer(device, 0, autofocus_process, NULL);
 					} else if (AGENT_IMAGER_START_EXPOSURE_ITEM->sw.value && AGENT_IMAGER_MACRO_MODE_FEATURE_ITEM->sw.value) {
 						indigo_set_timer(device, 0, bracketing_batch_process, NULL);

@@ -243,6 +243,100 @@ static void compatibility_wrapper_reports_failure(void) {
 	ASSERT_TRUE(rho1 == 0 && theta1 == 0 && rho2 == 0 && theta2 == 0 && rho3 == 0 && theta3 == 0);
 }
 
+// a frame_width x frame_height MONO16 frame with background noise and the pattern p pasted at (left, top)
+static uint16_t *render_in_frame(const pattern *p, int frame_width, int frame_height, int left, int top) {
+	uint16_t *frame = malloc((size_t)frame_width * frame_height * sizeof(uint16_t));
+	unsigned int seed = p->seed + 1000;
+	for (int i = 0; i < frame_width * frame_height; i++) {
+		frame[i] = (uint16_t)(BACKGROUND + NOISE * gauss_noise(&seed));
+	}
+	uint16_t *star = render_mono16(p);
+	for (int y = 0; y < SIZE; y++) {
+		memcpy(frame + (size_t)(top + y) * frame_width + left, star + y * SIZE, SIZE * sizeof(uint16_t));
+	}
+	free(star);
+	return frame;
+}
+
+// the pattern pasted at (left, top) has its star centre at frame pixel index (left + SIZE / 2 - 0.5, top + SIZE / 2 - 0.5)
+static void assert_central_spike_in_frame(const pattern *p, const indigo_bahtinov_result *result, int left, int top) {
+	double cx = left + SIZE / 2.0 - 0.5, cy = top + SIZE / 2.0 - 0.5;
+	ASSERT_TRUE(fabs(fabs(result->error) - fabs(p->offset)) < TOLERANCE);
+	ASSERT_TRUE(fabs(fabs(cx * cos(result->theta[0]) + cy * sin(result->theta[0]) - result->rho[0]) - fabs(p->offset)) < TOLERANCE);
+}
+
+static void window_around_star_in_large_frame_is_measured(void) {
+	pattern p = { 5.3, 2.5, MASK_ANGLE, 120, false, false, 111 };
+	indigo_bahtinov_result direct, result;
+	ASSERT_TRUE(analyze(&p, NULL, &direct));
+	uint16_t *frame = render_in_frame(&p, 1500, 1000, 900, 500);
+	bool found = indigo_bahtinov_analyze_window(INDIGO_RAW_MONO16, frame, 1500, 1000, 1050, 650, 500, NULL, &result);
+	free(frame);
+	ASSERT_TRUE(found);
+	ASSERT_TRUE(result.error * direct.error > 0);
+	ASSERT_TRUE(fabs(result.error - direct.error) < 0.1);
+	assert_central_spike_in_frame(&p, &result, 900, 500);
+}
+
+static void window_is_moved_inside_the_frame_at_its_edges(void) {
+	pattern p = { 47, -3, MASK_ANGLE, 120, false, false, 121 };
+	indigo_bahtinov_result result;
+	uint16_t *frame = render_in_frame(&p, 1000, 800, 0, 0);
+	bool found = indigo_bahtinov_analyze_window(INDIGO_RAW_MONO16, frame, 1000, 800, 150, 150, 500, NULL, &result);
+	free(frame);
+	ASSERT_TRUE(found);
+	assert_central_spike_in_frame(&p, &result, 0, 0);
+	frame = render_in_frame(&p, 1000, 800, 700, 500);
+	found = indigo_bahtinov_analyze_window(INDIGO_RAW_MONO16, frame, 1000, 800, 850, 650, 500, NULL, &result);
+	free(frame);
+	ASSERT_TRUE(found);
+	assert_central_spike_in_frame(&p, &result, 700, 500);
+}
+
+static void window_without_star_is_rejected(void) {
+	pattern p = { 5.3, 2, MASK_ANGLE, 120, false, false, 131 };
+	indigo_bahtinov_result result;
+	uint16_t *frame = render_in_frame(&p, 1500, 600, 0, 150);
+	bool found = indigo_bahtinov_analyze_window(INDIGO_RAW_MONO16, frame, 1500, 600, 1300, 300, 500, NULL, &result);
+	free(frame);
+	ASSERT_FALSE(found);
+}
+
+static void rgb24_window_equals_analysis_of_the_same_pixels(void) {
+	pattern p = { 5.3, -2.5, MASK_ANGLE, 120, false, false, 141 };
+	double *image = render(&p);
+	const int width = 1000, height = 700, left = 450, top = 250;
+	uint8_t *star = malloc(3 * SIZE * SIZE), *frame = malloc(3 * width * height);
+	for (int i = 0; i < SIZE * SIZE; i++) {
+		star[3 * i] = star[3 * i + 1] = star[3 * i + 2] = (uint8_t)fmax(0, fmin(255, (image[i] - BACKGROUND) / 30 + 20));
+	}
+	free(image);
+	memset(frame, 20, 3 * width * height);
+	for (int y = 0; y < SIZE; y++) {
+		memcpy(frame + 3 * ((top + y) * width + left), star + 3 * y * SIZE, 3 * SIZE);
+	}
+	indigo_bahtinov_result direct, result;
+	bool found_direct = indigo_bahtinov_analyze(INDIGO_RAW_RGB24, star, SIZE, SIZE, NULL, &direct);
+	bool found = indigo_bahtinov_analyze_window(INDIGO_RAW_RGB24, frame, width, height, left + SIZE / 2, top + SIZE / 2, SIZE, NULL, &result);
+	free(star);
+	free(frame);
+	ASSERT_TRUE(found_direct);
+	ASSERT_TRUE(found);
+	ASSERT_TRUE(result.error == direct.error);
+	for (int i = 0; i < 3; i++) {
+		ASSERT_TRUE(result.theta[i] == direct.theta[i]);
+		ASSERT_TRUE(fabs(result.rho[i] - (direct.rho[i] + left * cos(direct.theta[i]) + top * sin(direct.theta[i]))) < 1e-9);
+	}
+}
+
+static void unsupported_window_input_is_rejected(void) {
+	uint16_t data[64 * 64] = { 0 };
+	indigo_bahtinov_result result;
+	ASSERT_FALSE(indigo_bahtinov_analyze_window(INDIGO_RAW_MONO16, NULL, 64, 64, 32, 32, 500, NULL, &result));
+	ASSERT_FALSE(indigo_bahtinov_analyze_window(INDIGO_RAW_MONO16, data, 64, 64, 32, 32, 0, NULL, &result));
+	ASSERT_FALSE(indigo_bahtinov_analyze_window((indigo_raw_type)0, data, 64, 64, 32, 32, 500, NULL, &result));
+}
+
 int main(void) {
 	const indigo_test_case tests[] = {
 		{ "broadband_error_matches_central_spike_offset", broadband_error_matches_central_spike_offset },
@@ -257,6 +351,11 @@ int main(void) {
 		{ "star_without_mask_is_rejected", star_without_mask_is_rejected },
 		{ "compatibility_wrapper_returns_absolute_error_and_spikes", compatibility_wrapper_returns_absolute_error_and_spikes },
 		{ "compatibility_wrapper_reports_failure", compatibility_wrapper_reports_failure },
+		{ "window_around_star_in_large_frame_is_measured", window_around_star_in_large_frame_is_measured },
+		{ "window_is_moved_inside_the_frame_at_its_edges", window_is_moved_inside_the_frame_at_its_edges },
+		{ "window_without_star_is_rejected", window_without_star_is_rejected },
+		{ "rgb24_window_equals_analysis_of_the_same_pixels", rgb24_window_equals_analysis_of_the_same_pixels },
+		{ "unsupported_window_input_is_rejected", unsupported_window_input_is_rejected },
 	};
 	return indigo_run_tests("bahtinov unit tests", tests, (int)(sizeof(tests) / sizeof(tests[0])));
 }
